@@ -1,0 +1,17 @@
+# 编译产物
+__pycache__/
+*.pyc
+*.pyo
+main.py
+
+# 密钥文件（绝对不提交）
+secrets.nxs
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# 系统文件
+.DS_Store
+Thumbs.db
