@@ -451,6 +451,23 @@ function PromptBox({
   );
 }
 
+function toolRisk(tool: string, params: [string, string][]): { color: string; label: string; hint: string } {
+  const command = params.find(([key]) => /^(command|cmd|script)$/i.test(key))?.[1] || "";
+  if (/bash|shell|powershell/i.test(tool)) {
+    if (/\b(rm\s+-rf|del\s+\/[sq]|format\b|dd\s+if=|chmod\s+777|sudo\b|curl\b.*\|\s*(sh|bash)|powershell\b.*-enc)\b/i.test(command)) {
+      return { color: RED, label: "destructive command", hint: "Review command, path, and side effects before allowing." };
+    }
+    return { color: WARN, label: "shell command", hint: "This can change files or run arbitrary local processes." };
+  }
+  if (/write|edit|notebookedit/i.test(tool)) {
+    return { color: WARN, label: "file mutation", hint: "This may modify files in the current project." };
+  }
+  if (/read|grep|glob|ls/i.test(tool)) {
+    return { color: BLUE, label: "read-only", hint: "This should only inspect local project data." };
+  }
+  return { color: ORANGE, label: "tool request", hint: "Check the tool input before proceeding." };
+}
+
 function PermissionModal({
   tool,
   args,
@@ -467,14 +484,20 @@ function PermissionModal({
   });
 
   const params = argEntries(args);
+  const risk = toolRisk(tool, params);
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor={ORANGE} paddingX={2} paddingY={1} marginX={2} marginY={1}>
+    <Box flexDirection="column" borderStyle="round" borderColor={risk.color} paddingX={2} paddingY={1} marginX={2} marginY={1}>
       <Text>
         <Text color={ORANGE}>{TEARDROP} </Text>
-        <Text bold>Claude wants to use </Text>
+        <Text bold>Claude wants permission to use </Text>
         <Text bold color={BLUE}>{tool}</Text>
       </Text>
+      <Text>
+        <Text color={risk.color} bold>{risk.label}</Text>
+        <Text dimColor> · {risk.hint}</Text>
+      </Text>
       <Box flexDirection="column" marginLeft={2} marginTop={1}>
+        <Text color={DIM}>Tool input</Text>
         {params.slice(0, 8).map(([key, value]) => (
           <Text key={key}>
             <Text color={DIM}>{key}: </Text>
@@ -484,12 +507,14 @@ function PermissionModal({
         {params.length > 8 && <Text dimColor>… {params.length - 8} more parameters</Text>}
       </Box>
       <Text> </Text>
+      <Text bold>Do you want to proceed?</Text>
       <Text>
-        <Text color={GREEN}>y</Text><Text dimColor> allow  </Text>
-        <Text color={ORANGE}>a</Text><Text dimColor> always allow  </Text>
-        <Text color={RED}>n</Text><Text dimColor> deny  </Text>
-        <Text color={DIM}>esc deny</Text>
+        <Text color={GREEN}>y</Text><Text dimColor> yes, allow once  </Text>
+        <Text color={ORANGE}>a</Text><Text dimColor> yes, don't ask again*  </Text>
+        <Text color={RED}>n</Text><Text dimColor> no  </Text>
+        <Text color={DIM}>esc cancel</Text>
       </Text>
+      <Text dimColor>* persistent allow needs engine support; this UI currently allows once.</Text>
     </Box>
   );
 }
