@@ -388,6 +388,51 @@ function SlashOverlay({ matches, selected }: { matches: Command[]; selected: num
   );
 }
 
+function PromptBox({
+  input,
+  enabled,
+  busy,
+  loadingText,
+  onChange,
+  onSubmit,
+}: {
+  input: string;
+  enabled: boolean;
+  busy: boolean;
+  loadingText: string;
+  onChange: (value: string) => void;
+  onSubmit: (value: string) => void;
+}) {
+  const normalized = input.replace(/\r\n/g, "\n");
+  const lineCount = normalized ? normalized.split("\n").length : 1;
+  const hasContinuation = normalized.endsWith("\\");
+  const showInputHint = enabled && (lineCount > 1 || hasContinuation);
+  return (
+    <Box borderStyle="single" borderColor={DIM} paddingX={1} flexDirection="column">
+      <Box>
+        <Text color={ORANGE}>&gt; </Text>
+        {enabled ? (
+          <TextInput
+            value={input}
+            onChange={onChange}
+            onSubmit={onSubmit}
+            placeholder={busy ? "(working…)" : "Try \"create a util…\" or / for commands"}
+          />
+        ) : (
+          <Text dimColor>{loadingText}</Text>
+        )}
+      </Box>
+      {showInputHint && (
+        <Text dimColor>
+          {"  "}
+          {hasContinuation ? "newline pending" : `${lineCount} lines`}
+          {" · Enter sends · Ctrl+J or \\+Enter adds a line"}
+        </Text>
+      )}
+    </Box>
+  );
+}
+
 function PermissionModal({
   tool,
   args,
@@ -530,6 +575,8 @@ function App() {
   const [tokensOut, setTokensOut] = useState(0);
   const [slashSelected, setSlashSelected] = useState(0);
   const [engineReady, setEngineReady] = useState(false);
+  const [history, setHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number | null>(null);
   const [sessionSeconds, setSessionSeconds] = useState(0);
   const [exitArmed, setExitArmed] = useState(false);
   const [escapeArmed, setEscapeArmed] = useState(false);
@@ -539,10 +586,16 @@ function App() {
   const turnStartRef = useRef<number>(0);
   const appStartRef = useRef<number>(Date.now());
   const exitTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const draftBeforeHistoryRef = useRef("");
   const engineRef = useRef<Engine | null>(null);
 
-  const showSlash = input.startsWith("/") && !input.includes(" ") && !busy && !permission;
+  const showSlash = input.startsWith("/") && !input.includes(" ") && !input.includes("\n") && !busy && !permission;
   const slashMatches = useMemo(() => showSlash ? commandMatches(input) : [], [input, showSlash]);
+
+  const handleInputChange = useCallback((value: string) => {
+    setInput(value.replace(/\r\n/g, "\n"));
+    setHistoryIndex(null);
+  }, []);
 
   useEffect(() => {
     setSlashSelected(0);
@@ -711,6 +764,31 @@ function App() {
         return;
       }
     }
+    if (!busy && !showSlash && history.length > 0) {
+      if (key.upArrow) {
+        if (historyIndex === null) draftBeforeHistoryRef.current = input;
+        const nextIndex = historyIndex === null ? history.length - 1 : Math.max(0, historyIndex - 1);
+        setHistoryIndex(nextIndex);
+        setInput(history[nextIndex]);
+        return;
+      }
+      if (key.downArrow && historyIndex !== null) {
+        const nextIndex = historyIndex + 1;
+        if (nextIndex >= history.length) {
+          setHistoryIndex(null);
+          setInput(draftBeforeHistoryRef.current);
+        } else {
+          setHistoryIndex(nextIndex);
+          setInput(history[nextIndex]);
+        }
+        return;
+      }
+    }
+    if (!busy && key.ctrl && rawInput.toLowerCase() === "j") {
+      setInput((s) => s + "\n");
+      setHistoryIndex(null);
+      return;
+    }
     if (key.tab && key.shift) {
       const idx = MODES.indexOf(permMode);
       const next = MODES[(idx + 1) % MODES.length];
@@ -742,7 +820,13 @@ function App() {
 
   const submit = (value: string) => {
     if (busy || permission) return;
-    const v = value.trim();
+    const normalized = value.replace(/\r\n/g, "\n");
+    if (normalized.endsWith("\\")) {
+      setInput(normalized.slice(0, -1) + "\n");
+      setHistoryIndex(null);
+      return;
+    }
+    const v = normalized.trim();
     if (showSlash && slashMatches.length > 0) {
       const exact = COMMANDS.find((c) => c.name === v);
       if (!exact) {
@@ -754,6 +838,7 @@ function App() {
       }
     }
     setInput("");
+    setHistoryIndex(null);
     if (!v) return;
     setShowStartup(false);
     setExitArmed(false);
@@ -763,6 +848,10 @@ function App() {
       setTimeout(() => exit(), 200);
       return;
     }
+    setHistory((items) => {
+      const next = items[items.length - 1] === v ? items : [...items, v];
+      return next.slice(-80);
+    });
     setEntries((es) => [...es, { kind: "user", text: v }]);
     setBusy(true);
     setElapsed(0);
@@ -782,19 +871,14 @@ function App() {
         <StartupCard model={model} cwd={PROJECT_DISPLAY} />
         {engineReady && <StartupContextBlock />}
         {showSlash && <SlashOverlay matches={slashMatches} selected={Math.min(slashSelected, Math.max(0, slashMatches.length - 1))} />}
-        <Box borderStyle="single" borderColor={DIM} paddingX={1}>
-          <Text color={ORANGE}>&gt; </Text>
-          {engineReady && isRawModeSupported ? (
-            <TextInput
-              value={input}
-              onChange={setInput}
-              onSubmit={submit}
-              placeholder={"Try \"create a util…\" or / for commands"}
-            />
-          ) : (
-            <Text dimColor>Loading engine…</Text>
-          )}
-        </Box>
+        <PromptBox
+          input={input}
+          enabled={engineReady && isRawModeSupported}
+          busy={false}
+          loadingText="Loading engine…"
+          onChange={handleInputChange}
+          onSubmit={submit}
+        />
         <FooterBar mode={permMode} model={model} cwd={cwdShort} projectName={PROJECT_NAME} gitBranch={gitBranch} gitDirty={gitDirty} busy={false} tokensIn={0} tokensOut={0} active="" sessionSeconds={sessionSeconds} exitArmed={exitArmed} />
       </Box>
     );
@@ -820,19 +904,14 @@ function App() {
       )}
       {showSlash && <SlashOverlay matches={slashMatches} selected={Math.min(slashSelected, Math.max(0, slashMatches.length - 1))} />}
       <ActiveRow busy={busy} thinkTool={thinkTool} thinkPhase={thinkPhase} elapsed={elapsed} tokensOut={tokensOut} />
-      <Box borderStyle="single" borderColor={DIM} paddingX={1}>
-        <Text color={ORANGE}>&gt; </Text>
-        {isRawModeSupported ? (
-          <TextInput
-            value={input}
-            onChange={setInput}
-            onSubmit={submit}
-            placeholder={busy ? "(working…)" : "Try \"create a util…\" or / for commands"}
-          />
-        ) : (
-          <Text dimColor>(run in a real terminal)</Text>
-        )}
-      </Box>
+      <PromptBox
+        input={input}
+        enabled={isRawModeSupported}
+        busy={busy}
+        loadingText="(run in a real terminal)"
+        onChange={handleInputChange}
+        onSubmit={submit}
+      />
       <FooterBar mode={permMode} model={model} cwd={cwdShort} projectName={PROJECT_NAME} gitBranch={gitBranch} gitDirty={gitDirty} busy={busy} tokensIn={tokensIn} tokensOut={tokensOut} active={active} sessionSeconds={sessionSeconds} exitArmed={exitArmed} />
     </Box>
   );
