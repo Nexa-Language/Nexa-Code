@@ -79,7 +79,13 @@ if _actual not in content:
 # FileEditTool.ts:300-321 — 计数与唯一性
 _matches = content.count(_actual)
 if _matches == 0:
-    return 'String to replace not found in file.\nString: %s' % old_string
+    # P1-4: agent-friendly error with suggestion (对齐 CC findActualString 失败提示)
+    _hint = ''
+    if len(old_string) > 10:
+        _partial = old_string[:20]
+        if _partial in content:
+            _hint = ' Note: the first 20 chars of old_string DO exist in the file. The file may have changed since you last read it — Read the file again to get current content.'
+    return 'String to replace not found in file.\nString: %s%s' % (old_string, _hint)
 if _matches > 1 and not _ra:
     return ('Found %d matches of the string to replace, but replace_all is false. '
             'To replace all occurrences, set replace_all to true. To replace only one occurrence, '

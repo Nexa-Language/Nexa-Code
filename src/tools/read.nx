@@ -117,7 +117,7 @@ if _ext_lower in BINARY_EXT:
 
 # --- text (FileReadTool.ts:1011-1078) ---
 if not os.path.isfile(full):
-    return "File does not exist. %s" % file_path
+    return "File does not exist. %s\nDid you mean a similar file? Try using Glob to find the correct path." % file_path
 
 _total_bytes = os.path.getsize(full)
 # maxSizeBytes 门：门的是【整个文件大小】(非切片)；仅当未指定 limit 时强制 (limits.ts:9-13, FileReadTool.ts:1018)

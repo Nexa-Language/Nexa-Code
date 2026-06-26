@@ -246,18 +246,22 @@ import os, json, hashlib, subprocess, shutil
 
 _event = (event or '').strip()
 _tool = (tool_name or '').strip()
-# 读 settings.json hooks 配置（hooks.ts getHooksConfig）
+# P1-5 Fix: 多源合并（CC hooks.ts getHooksConfig 从 user/project/local 合并，不 break）
 _hooks_cfg = {}
-for _p in (os.path.join(os.getcwd(), '.claude', 'settings.local.json'),
-           os.path.join(os.getcwd(), '.claude', 'settings.json'),
-           os.path.join(os.path.expanduser('~'), '.claude', 'settings.json')):
+_home = os.path.expanduser('~')
+for _p in (os.path.join(_home, '.claude', 'settings.json'),              # userSettings
+           os.path.join(os.getcwd(), '.claude', 'settings.json'),            # projectSettings
+           os.path.join(os.getcwd(), '.claude', 'settings.local.json')):     # localSettings
     if os.path.isfile(_p):
         try:
             with open(_p, 'r', encoding='utf-8') as _f:
                 _d = json.load(_f)
             _h = (_d or {}).get('hooks', {})
             if _h:
-                _hooks_cfg = _h; break
+                for _evt, _entries in _h.items():
+                    if isinstance(_entries, list):
+                        _hooks_cfg.setdefault(_evt, [])
+                        _hooks_cfg[_evt].extend(_entries)  # merge, not replace
         except Exception:
             pass
 
@@ -304,7 +308,11 @@ for _entry in _entries:
             _args = [_bash, '-c', _cmd] if _bash else _cmd
             _proc = subprocess.run(_args, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60, env=_env)
             _txt = (_proc.stdout or '').strip()
-            if _proc.returncode != 0:
+            # P1-5: CC hooks.ts exit code semantics — exit 2 = block + custom message (stdout as block reason)
+            if _proc.returncode == 2:
+                _block_msg = _txt or 'Hook blocked (exit 2)'
+                _out.append('[hook BLOCKED] %s' % _block_msg[:300])
+            elif _proc.returncode != 0:
                 _txt = (_txt + ((' | ' if _txt else '') + 'stderr: ' + (_proc.stderr or '').strip())).strip()
                 _out.append('[hook %s BLOCKED (exit %d)] %s' % (_cmd[:40], _proc.returncode, _txt[:200]))
             elif _txt:
