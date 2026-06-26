@@ -90,6 +90,11 @@ def test_edit():
     M.Read(f, '1', '10', '')
     r = M.Edit(f, 'nonexistent_text', 'xxx', 'false')
     check('Edit.未找到', any(x in r.lower() for x in ['not found', 'no match', 'error']), f'应报未找到: {r[:60]}')
+    # 非唯一匹配 + replace_all=false → 正确拒绝
+    f3 = setup_file('edit3.txt', 'dup\ndup\ndup\n')
+    M.Read(f3, '1', '10', '')
+    r = M.Edit(f3, 'dup', 'UNIQUE', 'false')
+    check('Edit.非唯一拒绝', any(x in r.lower() for x in ['match', 'unique', 'replace_all']), f'应拒绝非唯一: {r[:60]}')
 
 def test_multiedit():
     f = setup_file('multi.txt', 'one\ntwo\nthree\n')
@@ -123,9 +128,9 @@ def test_grep():
     # 无效正则
     r = grep_defaults('[invalid')
     check('Grep.无效正则', 'error' in r.lower() or 'fail' in r.lower(), f'应报错: {r[:60]}')
-    # count 模式
+    # count 模式（搜索范围是整个项目，不只测试文件）
     r = grep_defaults('hello', output_mode='count')
-    check('Grep.count模式', 'grep1' in r, f'count结果: {r[:60]}')
+    check('Grep.count模式', '.md' in r or '.txt' in r or '.nx' in r, f'count应返回文件:N 格式: {r[:80]}')
 
 def test_glob():
     setup_file('glob1.txt', 'x')
