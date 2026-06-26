@@ -58,40 +58,89 @@ while True:
 """
 }
 
-// ── C 上下文：auto_compact_if_needed — 接近 token 上限自动摘要压缩 ─────────────
-// autoCompact.ts:101-143 getAutoCompactThreshold = contextWindow - AUTOCOMPACT_BUFFER_TOKENS(13000)。
-// 接近阈值时摘要旧消息。glm-5.1 有 200K context，阈值取 150K（保留 50K buffer）。
-@tool("Auto-compact context if near token limit (C-dimension). Estimates tokens (chars/4); if over threshold, summarizes old messages into a summary. Returns action note.")
+// ── C 上下文：auto_compact_if_needed — CC 忠实版摘要（Phase 17 P0-1 深化）──────
+// Ported from CC services/compact/{prompt,compact,grouping}.ts:
+//   - prompt.ts BASE_COMPACT_PROMPT: 9-section structured summary prompt
+//   - grouping.ts groupMessagesByApiRound: 按 API round 分组（user+assistant+tool）
+//   - autoCompact.ts: context_window - buffer 动态阈值
+@tool("Auto-compact context if near token limit (C-dimension). Estimates tokens (CJK-aware); if over threshold, summarizes old messages using CC's structured 9-section prompt. Returns action note.")
 fn auto_compact_if_needed(token_threshold: number): string {
     python! """
 import os
 
-_threshold = int(token_threshold) if token_threshold else 150000  # M7 Fix: glm-5.1 200K context, 75% threshold
-_msgs = [m for m in Coder.messages if m.get('role') in ('user', 'assistant')]
+_threshold = int(token_threshold) if token_threshold else 150000
+_all = Coder.messages
+_msgs = [m for m in _all if m.get('role') in ('user', 'assistant')]
 _chars = sum(len(str(m.get('content', ''))) for m in _msgs)
-# P1-7 Fix: CJK-aware token estimation (CJK ~2 chars/token, EN ~4 chars/token)
-_cjk = sum(1 for _c in str(_msgs) if '一' <= _c <= '鿿')
+_cjk = sum(1 for _c in str(_msgs) if chr(0x4e00) <= _c <= chr(0x9fff))
 _non_cjk = _chars - _cjk
 _est_tokens = int(_cjk * 0.5 + _non_cjk * 0.25)
 if _est_tokens < _threshold:
     return 'ok (est %d tokens < threshold %d)' % (_est_tokens, _threshold)
 if len(_msgs) < 4:
     return 'skip (too few messages to compact)'
-# 摘要旧消息（保留最近 2 轮 + system；摘要其余）——对齐 compactConversation 核心行为
+
+# CC grouping.ts groupMessagesByApiRound: 按 assistant 边界分组
+# 保留最近 2 个 group（对齐 CC 的"keep recent"行为）
+_groups = []
+_cur = []
+for _m in _msgs:
+    if _m.get('role') == 'assistant' and _cur:
+        _groups.append(_cur)
+        _cur = [_m]
+    else:
+        _cur.append(_m)
+if _cur:
+    _groups.append(_cur)
+
+if len(_groups) <= 2:
+    return 'skip (only %d groups, need >2 to compact)' % len(_groups)
+
+_keep_groups = _groups[-2:]
+_sum_groups = _groups[:-2]
+
+# CC prompt.ts BASE_COMPACT_PROMPT: 忠实移植 9-section 结构化摘要指令
+_compact_prompt = (
+    'Your task is to create a detailed summary of the conversation so far, '
+    'paying close attention to the user explicit requests and your previous actions. '
+    'This summary should be thorough in capturing technical details, code patterns, '
+    'and architectural decisions that would be essential for continuing development work without losing context.' +
+    chr(10) + chr(10) +
+    'Your summary should include the following sections:' + chr(10) + chr(10) +
+    '1. Primary Request and Intent: Capture all of the user explicit requests and intents in detail' + chr(10) +
+    '2. Key Technical Concepts: List all important technical concepts, technologies, and frameworks discussed.' + chr(10) +
+    '3. Files and Code Sections: Enumerate specific files and code sections examined, modified, or created. ' +
+    'Include full code snippets where applicable and a summary of why this file read or edit is important.' + chr(10) +
+    '4. Errors and fixes: List all errors that you ran into, and how you fixed them. ' +
+    'Pay special attention to specific user feedback that you received.' + chr(10) +
+    '5. Problem Solving: Document problems solved and any ongoing troubleshooting efforts.' + chr(10) +
+    '6. All user messages: List ALL user messages that are not tool results.' + chr(10) +
+    '7. Pending Tasks: Outline any pending tasks that you have explicitly been asked to work on.' + chr(10) +
+    '8. Current Work: Describe in detail precisely what was being worked on immediately before this summary request.' + chr(10) +
+    '9. Optional Next Step: List the next step directly in line with the user most recent request.'
+)
+
+_transcript = chr(10).join(
+    '[%s] %s' % (m.get('role'), str(m.get('content', ''))[:800])
+    for _g in _sum_groups for m in _g
+)
+
 try:
     _client = Coder._get_client()
-    _keep_recent = _msgs[-4:]
-    _to_sum = _msgs[:-4]
-    _transcript = chr(10).join('[%s] %s' % (m.get('role'), str(m.get('content'))[:600]) for m in _to_sum)
     _resp = _client.chat.completions.create(
-        model=Coder.model, timeout=60,
-        messages=[{'role': 'system', 'content': 'Summarize this conversation concisely, preserving key decisions, context, and open tasks.'},
-                  {'role': 'user', 'content': _transcript}])
+        model=Coder.model, timeout=90,
+        messages=[
+            {'role': 'system', 'content': _compact_prompt},
+            {'role': 'user', 'content': _transcript}
+        ])
     _summary = _resp.choices[0].message.content or '(empty summary)'
-    _sys = [m for m in Coder.messages if m.get('role') == 'system']
-    Coder.messages = _sys + [{'role': 'user', 'content': 'Previous conversation summary:\n' + _summary},
-                             {'role': 'assistant', 'content': 'Understood. I have the summary.'}] + _keep_recent
-    return 'compacted (%d tokens -> summary, kept last 4 msgs)' % _est_tokens
+    _sys = [m for m in _all if m.get('role') == 'system']
+    _keep_flat = [m for _g in _keep_groups for m in _g]
+    Coder.messages = _sys + [
+        {'role': 'user', 'content': 'Previous conversation summary:\n' + _summary},
+        {'role': 'assistant', 'content': 'Understood. I have the summary of our previous conversation.'}
+    ] + _keep_flat
+    return 'compacted (%d tokens -> CC 9-section summary, kept last %d groups)' % (_est_tokens, len(_keep_groups))
 except Exception as _e:
     return 'compact failed: %s' % str(_e)[:150]
 """

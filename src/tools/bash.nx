@@ -34,6 +34,22 @@ _mode = globals().get('_CCPORT_MODE', 'default')
 if _mode == 'plan':
     return '[Permission] Bash is not allowed in plan mode (read-only).'
 
+# P0-2 Bash 安全深化：危险命令检测（对齐 CC dangerousPatterns.ts + bashSecurity.ts）
+_dangerous = [
+    'rm -rf /', 'rm -rf ~', 'rm -rf *', 'rm -rf .',
+    'mkfs', 'dd if=', '>: /dev/sd', '>/dev/sd',
+    'chmod 777', 'shutdown', 'reboot', 'halt', 'init 0',
+    'drop database', 'drop table',
+    ':(){:|:&};:',  # fork bomb
+    '> /dev/null 2>&1 &',  # silent background (suspicious combined with others)
+]
+_cmd_lower = _cmd.lower().strip()
+for _pat in _dangerous:
+    if _pat in _cmd_lower:
+        return ('[Security] Potentially dangerous command detected: pattern "%s". '
+                'This command could cause irreversible damage. '
+                'If this is intentional, use a more specific command or get explicit user approval first.' % _pat)
+
 _to = int(timeout) if timeout else DEFAULT_TIMEOUT_MS
 if _to <= 0:
     _to = DEFAULT_TIMEOUT_MS
