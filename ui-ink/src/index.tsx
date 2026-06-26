@@ -370,12 +370,28 @@ function ErrorBlock({ message, source }: { message: string; source: string }) {
   );
 }
 
+function UserMessage({ text }: { text: string }) {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const isMultiline = lines.length > 1;
+  return (
+    <Box flexDirection="column" marginTop={isMultiline ? 1 : 0}>
+      {lines.map((line, idx) => (
+        <Text key={idx} color={DIM}>
+          <Text>{idx === 0 ? "> " : "  "}</Text>
+          <Text>{line || " "}</Text>
+        </Text>
+      ))}
+      {isMultiline && <Text color={DIM} italic>  {lines.length} line prompt</Text>}
+    </Box>
+  );
+}
+
 function MessageLog({ entries, streaming }: { entries: Entry[]; streaming: string }) {
   return (
     <Box flexDirection="column" paddingX={1} flexGrow={1}>
       {entries.map((entry, i) => {
         if (entry.kind === "user") {
-          return <Text key={i} color={DIM}>&gt; {entry.text}</Text>;
+          return <UserMessage key={i} text={entry.text} />;
         }
         if (entry.kind === "assistant") {
           return (
