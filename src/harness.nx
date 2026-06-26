@@ -217,10 +217,30 @@ _bash = shutil.which('bash')
 _out = []
 for _entry in _entries:
     _matcher = _entry.get('matcher', '')
-    # matcher 匹配 tool_name（空 matcher = 全部；PreToolUse/PostToolUse 用工具名）
+    # M2 Fix: matcher 支持 glob 通配 + 工具名+参数组合（对齐 CC shellRuleMatching.ts）
     if _tool and _matcher:
-        _pat = _matcher.replace('*', '')
-        if _pat and (_pat not in _tool):
+        import fnmatch as _fnm
+        _matched = False
+        for _m_part in _matcher.split(','):
+            _m_part = _m_part.strip()
+            if not _m_part:
+                continue
+            # Bash(git push:*) 格式 → 分离工具名和参数模式
+            if '(' in _m_part and _m_part.endswith(')'):
+                _mt, _mspec = _m_part.split('(', 1)
+                _mspec = _mspec[:-1]
+                if _mt != _tool:
+                    continue
+                _val = input_json if isinstance(input_json, str) else str(input_json)
+                if ':' in _mspec:
+                    _pf = _mspec.split(':')[0]
+                    if _val.startswith(_pf):
+                        _matched = True; break
+                elif _fnm.fnmatch(_tool, _m_part):
+                    _matched = True; break
+            elif _fnm.fnmatch(_tool, _m_part):
+                _matched = True; break
+        if not _matched:
             continue
     for _h in (_entry.get('hooks') or []):
         if _h.get('type') != 'command':
