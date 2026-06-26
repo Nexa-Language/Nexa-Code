@@ -109,12 +109,9 @@ return run_turn_safe(prompt, 3)
 @tool("JSON-events mode: structured headless I/O for native UI. Reads JSON lines from stdin, emits events to stdout. Set via NEXA_JSON_EVENTS=1.")
 fn run_json_events(): string {
     python! """
-import sys, json, os
+import sys, json, os, threading, queue as _q
 from contextlib import redirect_stdout, redirect_stderr
 
-# Phase 12 P0 Fix 4: 结构化 tool 事件（P-RUN-2 hooks，非 stdout regex scrape）
-# Phase 12 P0 Fix 3: permission request_id 匹配
-# NEXA_QUIET=1 抑制 _debug_print 标记（工具事件由 hooks 发，不再 scrape stdout）
 os.environ['NEXA_QUIET'] = '1'
 os.environ['NEXA_STREAM_TOOLS'] = '1'
 
@@ -123,61 +120,126 @@ def _emit(ev):
     _real_out.write(json.dumps(ev, ensure_ascii=False) + chr(10))
     _real_out.flush()
 
-# --- request_id 计数器 ---
-_rid = [0]
-def _next_rid():
-    _rid[0] += 1
-    return _rid[0]
+# --- P0-3: tool_call_id 计数器 ---
+_tc_id = [0]
+def _next_tcid():
+    _tc_id[0] += 1
+    return 'tc_%d' % _tc_id[0]
 
-# --- 结构化 tool 事件 hooks（Fix 4）---
-# 必须在 init_permissions 前注册（保证 PreToolUse 顺序：tool_event → permission）
+# --- P0-1: True Cancel 基础设施 ---
+_cancel = {'flag': False}
+_partial = {'text': ''}
+
+# --- stdin reader 线程（让 cancel 能在 turn 执行时被接收）---
+_stdin_q = _q.Queue()
+def _stdin_reader():
+    for _line in sys.stdin:
+        _stdin_q.put(_line)
+_stdin_t = threading.Thread(target=_stdin_reader, daemon=True)
+_stdin_t.start()
+
+def _read_stdin(timeout=None):
+    try:
+        return _stdin_q.get(timeout=timeout)
+    except _q.Empty:
+        return None
+
+# --- 结构化 tool 事件 hooks（P0-3: tool_call_id + status）---
 from src.runtime.tools_registry import register_tool_hook
+_pending_tcid = {}
 def _tool_pre(name, args_dict):
-    _emit({'type': 'tool_call', 'name': name, 'args': args_dict})
+    _tcid = _next_tcid()
+    _pending_tcid[name] = _tcid
+    _emit({'type': 'tool_call', 'tool_call_id': _tcid, 'name': name, 'args': args_dict})
     return None
 def _tool_post(name, args_dict, result):
-    _emit({'type': 'tool_result', 'name': name, 'result': result})
+    _tcid = _pending_tcid.pop(name, 'tc_?')
+    _status = 'failed' if ('error' in str(result).lower() or 'permission denied' in str(result).lower()) else 'completed'
+    _emit({'type': 'tool_result', 'tool_call_id': _tcid, 'name': name, 'result': result, 'status': _status})
+    # P1-5: todo/task 结构化事件
+    if name in ('TodoWrite', 'TaskCreate', 'TaskUpdate', 'TaskList'):
+        try:
+            _todos = globals().get('_CCPORT_TODOS', {}).get('main', [])
+            if _todos:
+                _emit({'type': 'todo_update', 'todos': [{'content': t.get('content', ''), 'status': t.get('status', '')} for t in _todos]})
+        except Exception:
+            pass
     return None
 register_tool_hook('PreToolUse', _tool_pre)
 register_tool_hook('PostToolUse', _tool_post)
 
-# 引擎初始化（注册权限 hook 在 tool-event hook 之后）
 init_permissions()
 seed_context(build_user_context('glm-5.1'))
 
-# --- permission ask with request_id（Fix 3）---
+# --- P0-2: permission ask with request_id + persistent decisions ---
 def _ask(tool, args_str):
-    _rid_v = _next_rid()
-    _emit({'type': 'permission_request', 'request_id': _rid_v, 'tool': tool, 'args': args_str})
-    _approved = False
+    _rid = _next_tcid()  # reuse counter for request IDs
+    _emit({'type': 'permission_request', 'request_id': _rid, 'tool': tool, 'args': args_str})
+    _decision = 'deny'
     while True:
-        _line = sys.stdin.readline()
+        _line = _read_stdin(timeout=120)
         if not _line:
             break
         try:
-            _r = json.loads(_line)
-            if _r.get('type') == 'permission_response' and _r.get('request_id') == _rid_v:
-                _approved = _r.get('approved', False)
+            _r = json.loads(_line.strip())
+            if _r.get('type') == 'permission_response' and _r.get('request_id') == _rid:
+                _decision = _r.get('decision', 'deny')
+                break
+            elif _r.get('type') == 'cancel':
+                _decision = 'deny'
                 break
         except Exception:
             pass
-    if not _approved:
-        _emit({'type': 'tool_result', 'name': tool, 'result': '[Permission denied by user]'})
-    return 'y' if _approved else 'n'
+    if _decision in ('allow_once', 'allow_session', 'allow_rule'):
+        if _decision in ('allow_session', 'allow_rule'):
+            _rules = globals().setdefault('_CCPORT_RULES', {'allow': [], 'deny': [], 'ask': []})
+            _rule = tool
+            if tool not in _rules['allow']:
+                _rules['allow'].append(tool)
+                _rules['ask'] = [r for r in _rules.get('ask', []) if r != tool]
+            if _decision == 'allow_rule':
+                try:
+                    import json as _j2, os as _os2
+                    _sp = _os2.path.join(_os2.getcwd(), '.claude', 'settings.local.json')
+                    _sd = {}
+                    if _os2.path.isfile(_sp):
+                        with open(_sp, 'r') as _f2: _sd = _j2.load(_f2) or {}
+                    _perm = _sd.setdefault('permissions', {})
+                    _al = _perm.setdefault('allow', [])
+                    if tool not in _al: _al.append(tool)
+                    with open(_sp, 'w') as _f2: _j2.dump(_sd, _f2, indent=2)
+                    _emit({'type': 'rule_added', 'tool': tool, 'scope': 'persistent'})
+                except Exception:
+                    pass
+        return 'y'
+    _emit({'type': 'tool_result', 'tool_call_id': _rid, 'name': tool, 'result': '[Permission denied by user]', 'status': 'failed'})
+    return 'n'
 globals()['_CCPORT_ASK_HANDLER'] = _ask
 
 _emit({'type': 'ready', 'model': 'glm-5.1'})
 
-# --- assistant_token 流式捕获（NEXA_QUIET 后 stdout 只有流式回复 token，无标记）---
+# P1-6: session_info event
+import subprocess as _sp2
+try:
+    _br = _sp2.run(['git', 'branch', '--show-current'], capture_output=True, text=True, timeout=5)
+    _branch = (_br.stdout or '').strip()
+except Exception:
+    _branch = ''
+_emit({'type': 'session_info', 'model': 'glm-5.1', 'cwd': os.getcwd(), 'git_branch': _branch, 'recent_sessions': []})
+
+# --- assistant_token 流式 + cancel 检查 ---
 class _TokenStream:
     def write(self, s):
         if s:
+            _partial['text'] += s
             _emit({'type': 'assistant_token', 'content': s})
+            if _cancel['flag']:
+                raise KeyboardInterrupt('cancelled')
         return len(s) if isinstance(s, str) else 0
     def flush(self):
         pass
 
-class _StderrStream:  # H5: 替代 _NullStream——不吞 stderr，发 error 事件到 UI
+class _StderrStream:
     def write(self, s):
         if s and s.strip():
             _emit({'type': 'error', 'message': '[stderr] ' + s.strip()[:300]})
@@ -185,8 +247,11 @@ class _StderrStream:  # H5: 替代 _NullStream——不吞 stderr，发 error �
     def flush(self):
         pass
 
+# P2-7: double Ctrl-C exit
+_ctrl_c_count = [0]
+
 while True:
-    _line = sys.stdin.readline()
+    _line = _read_stdin()
     if not _line:
         break
     _line = _line.strip()
@@ -198,12 +263,29 @@ while True:
         _emit({'type': 'error', 'message': 'bad json: %s' % _e})
         continue
     _t = _req.get('type')
-    # H5: set_mode command from UI (shift+tab cycling)
-    if _t == 'set_mode':
-        _new_mode = _req.get('mode', 'default')
-        set_permission_mode(_new_mode)
-        _emit({'type': 'mode_changed', 'mode': _new_mode})
+
+    # P0-1: cancel — 设标志，TokenStream 会 raise
+    if _t == 'cancel':
+        _cancel['flag'] = True
+        _emit({'type': 'turn_status', 'phase': 'interrupted'})
         continue
+
+    # set_mode (shift+tab)
+    if _t == 'set_mode':
+        set_permission_mode(_req.get('mode', 'default'))
+        _emit({'type': 'mode_changed', 'mode': _req.get('mode', 'default')})
+        continue
+
+    # P2-7: double ctrl-c
+    if _t == 'ctrl_c':
+        _ctrl_c_count[0] += 1
+        if _ctrl_c_count[0] >= 2:
+            break
+        _emit({'type': 'info', 'message': 'Press Ctrl-C again to exit'})
+        threading.Timer(2.0, lambda: _ctrl_c_count.__setitem__(0, 0)).start()
+        continue
+    _ctrl_c_count[0] = 0
+
     if _t == 'command':
         _name = _req.get('name', '')
         try:
@@ -212,28 +294,42 @@ while True:
                 _emit({'type': 'done', 'reply': 'exit'})
                 break
             elif _out.startswith('__AS_PROMPT__:'):
+                _cancel['flag'] = False
+                _partial['text'] = ''
                 _emit({'type': 'turn_status', 'phase': 'thinking'})
-                with redirect_stdout(_TokenStream()), redirect_stderr(_StderrStream()):
-                    _rep = run_one_turn(_out[len('__AS_PROMPT__:'):])
-                _emit({'type': 'turn_status', 'phase': 'idle'})
-                _emit({'type': 'done', 'reply': _rep})
+                try:
+                    with redirect_stdout(_TokenStream()), redirect_stderr(_StderrStream()):
+                        _rep = run_one_turn(_out[len('__AS_PROMPT__:'):])
+                    _emit({'type': 'turn_status', 'phase': 'idle'})
+                    _emit({'type': 'done', 'reply': _rep})
+                except KeyboardInterrupt:
+                    _emit({'type': 'done', 'reply': _partial['text'] or '(interrupted)'})
+                except Exception as _e:
+                    _emit({'type': 'error', 'message': str(_e)})
             else:
                 _emit({'type': 'command_result', 'name': _name, 'result': _out})
         except Exception as _e:
             _emit({'type': 'error', 'message': str(_e)})
+
     elif _t == 'message':
+        _cancel['flag'] = False
+        _partial['text'] = ''
+        _emit({'type': 'turn_status', 'phase': 'thinking'})
         try:
-            _emit({'type': 'turn_status', 'phase': 'thinking'})
             with redirect_stdout(_TokenStream()), redirect_stderr(_StderrStream()):
                 _rep = run_one_turn(_req.get('content', ''))
             _emit({'type': 'turn_status', 'phase': 'idle'})
             _emit({'type': 'done', 'reply': _rep})
+        except KeyboardInterrupt:
+            _emit({'type': 'done', 'reply': _partial['text'] or '(interrupted)'})
         except Exception as _e:
             _emit({'type': 'error', 'message': str(_e)})
+
     elif _t == 'exit':
         break
     else:
         _emit({'type': 'error', 'message': 'unknown type: %s' % _t})
+
 _emit({'type': 'session_end'})
 return 'json-events-done'
 """
