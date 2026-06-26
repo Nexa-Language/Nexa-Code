@@ -388,20 +388,36 @@ function MessageLog({ entries, streaming }: { entries: Entry[]; streaming: strin
   );
 }
 
-function SlashOverlay({ matches, selected }: { matches: Command[]; selected: number }) {
-  if (matches.length === 0) return null;
+function SlashOverlay({ matches, selected, query }: { matches: Command[]; selected: number; query: string }) {
+  const width = terminalWidth();
+  const selectedCommand = matches[Math.min(selected, Math.max(0, matches.length - 1))];
   return (
     <Box flexDirection="column" paddingX={1} marginX={1}>
-      {matches.map((c, i) => (
-        <Box key={c.name} flexDirection="column">
-          <Text>
-            <Text color={i === selected ? ORANGE : DIM}>{c.name.padEnd(18)}</Text>
-            <Text color={DIM}>{(c.source || "builtin").padEnd(14)}</Text>
-            <Text color={i === selected ? GREY : DIM}>{truncateMiddle(c.desc, Math.max(24, terminalWidth() - 36))}</Text>
-          </Text>
-        </Box>
-      ))}
-      <Text dimColor>↑/↓ select · tab complete · exact command runs as typed</Text>
+      <Text>
+        <Text color={ORANGE} bold>Commands</Text>
+        <Text dimColor> {matches.length > 0 ? `${selected + 1}/${matches.length}` : "0 matches"}</Text>
+        {query.length > 1 && <Text dimColor> · filtering "{query.slice(1)}"</Text>}
+      </Text>
+      {matches.length === 0 ? (
+        <Text dimColor>No slash commands match. Backspace to broaden the search.</Text>
+      ) : (
+        matches.map((c, i) => {
+          const isSelected = i === selected;
+          const source = c.source || "builtin";
+          return (
+            <Text key={c.name}>
+              <Text color={isSelected ? ORANGE : DIM}>{isSelected ? "› " : "  "}</Text>
+              <Text color={isSelected ? ORANGE : DIM}>{c.name.padEnd(18)}</Text>
+              <Text color={DIM}>{source.padEnd(12)}</Text>
+              <Text color={isSelected ? GREY : DIM}>{truncateMiddle(c.desc, Math.max(24, width - 38))}</Text>
+            </Text>
+          );
+        })
+      )}
+      <Text dimColor>
+        ↑/↓ navigate · tab complete
+        {selectedCommand ? ` · enter ${selectedCommand.name}` : " · enter keeps typing"}
+      </Text>
     </Box>
   );
 }
@@ -915,7 +931,7 @@ function App() {
       <Box flexDirection="column">
         <StartupCard model={model} cwd={PROJECT_DISPLAY} />
         {engineReady && <StartupContextBlock />}
-        {showSlash && <SlashOverlay matches={slashMatches} selected={Math.min(slashSelected, Math.max(0, slashMatches.length - 1))} />}
+        {showSlash && <SlashOverlay matches={slashMatches} selected={Math.min(slashSelected, Math.max(0, slashMatches.length - 1))} query={input} />}
         <PromptBox
           input={input}
           enabled={engineReady && isRawModeSupported}
@@ -947,7 +963,7 @@ function App() {
           }}
         />
       )}
-      {showSlash && <SlashOverlay matches={slashMatches} selected={Math.min(slashSelected, Math.max(0, slashMatches.length - 1))} />}
+      {showSlash && <SlashOverlay matches={slashMatches} selected={Math.min(slashSelected, Math.max(0, slashMatches.length - 1))} query={input} />}
       <ActiveRow busy={busy} thinkTool={thinkTool} thinkPhase={thinkPhase} elapsed={elapsed} tokensOut={tokensOut} />
       <PromptBox
         input={input}
