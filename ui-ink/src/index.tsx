@@ -359,9 +359,34 @@ function truncateResultLine(line: string): string {
   return line.length > maxWidth ? line.slice(0, maxWidth - 1) + "…" : line;
 }
 
+function findArg(args: [string, string][], keys: string[]): string {
+  const lowered = keys.map((key) => key.toLowerCase());
+  return args.find(([key]) => lowered.includes(key.toLowerCase()))?.[1] || "";
+}
+
+function toolCallLabel(name: string, args: [string, string][]): string {
+  const lower = name.toLowerCase();
+  const pathValue = findArg(args, ["file_path", "path", "notebook_path"]);
+  const command = findArg(args, ["command", "cmd", "script"]);
+  const pattern = findArg(args, ["pattern", "query"]);
+  const primary =
+    lower.includes("bash") || lower.includes("shell") ? command :
+    lower.includes("grep") ? [pattern, pathValue].filter(Boolean).join(" in ") :
+    lower.includes("glob") ? pattern || pathValue :
+    pathValue || command || pattern;
+  if (!primary) return name;
+  const normalized = primary.replace(/\r\n/g, "\n");
+  const lineCount = normalized.split("\n").length;
+  const compact = normalized.replace(/\s+/g, " ").trim();
+  const suffix = lineCount > 1 ? ` · ${lineCount} lines` : "";
+  return `${name}(${truncateMiddle(compact, Math.max(18, terminalWidth() - name.length - 16))}${suffix})`;
+}
+
 function ToolView({ entry }: { entry: Extract<Entry, { kind: "tool" }> }) {
   const args = argEntries(entry.args);
   const argSummary = args.map(([k, v]) => `${k}: ${v}`).join(", ");
+  const label = toolCallLabel(entry.name, args);
+  const usedPrimaryLabel = label !== entry.name;
   const result = entry.result || "";
   const resultLines = normalizedResultLines(result);
   const foldAt = 6;
@@ -381,8 +406,8 @@ function ToolView({ entry }: { entry: Extract<Entry, { kind: "tool" }> }) {
     <Box flexDirection="column" marginTop={1}>
       <Text>
         <Text color={ORANGE}>{BLACK_CIRCLE} </Text>
-        <Text color={color} bold>{entry.name}</Text>
-        {argSummary && <Text dimColor> {truncateMiddle(argSummary, Math.max(32, terminalWidth() - entry.name.length - 8))}</Text>}
+        <Text color={color} bold>{label}</Text>
+        {argSummary && !usedPrimaryLabel && <Text dimColor> {truncateMiddle(argSummary, Math.max(32, terminalWidth() - entry.name.length - 8))}</Text>}
       </Text>
       <Box marginLeft={2} flexDirection="column">
         {entry.result === null ? (
