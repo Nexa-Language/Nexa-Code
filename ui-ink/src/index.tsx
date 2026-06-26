@@ -167,6 +167,19 @@ function InlineText({ text, color }: { text: string; color?: string }) {
   );
 }
 
+function isDiffLanguage(lang: string): boolean {
+  return /^(diff|patch|udiff)$/i.test(lang.trim());
+}
+
+function codeLineColor(lang: string, line: string): string {
+  if (!isDiffLanguage(lang)) return VIOLET;
+  if (/^@@/.test(line)) return BLUE;
+  if (/^(diff --git|index |--- |\+\+\+ )/.test(line)) return DIM;
+  if (/^\+/.test(line)) return GREEN;
+  if (/^-/.test(line)) return RED;
+  return DIM;
+}
+
 function MarkdownView({ text }: { text: string }) {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const nodes: React.ReactNode[] = [];
@@ -180,7 +193,7 @@ function MarkdownView({ text }: { text: string }) {
       <Box key={`code-${nodes.length}`} flexDirection="column" borderStyle="single" borderColor={DIM} paddingX={1} marginY={0}>
         {codeLang && <Text color={DIM}>{codeLang}</Text>}
         {codeLines.length === 0 ? <Text> </Text> : codeLines.map((line, i) => (
-          <Text key={i} color={VIOLET}>{line || " "}</Text>
+          <Text key={i} color={codeLineColor(codeLang, line)}>{line || " "}</Text>
         ))}
       </Box>
     );
