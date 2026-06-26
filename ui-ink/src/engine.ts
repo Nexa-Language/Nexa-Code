@@ -4,6 +4,7 @@
 import { spawn, ChildProcessWithoutNullStreams, execSync } from "node:child_process";
 import * as path from "node:path";
 import * as readline from "node:readline";
+import { existsSync } from "node:fs";
 
 export type EngineEvent =
   | { type: "ready"; model: string }
@@ -57,10 +58,22 @@ export class Engine {
       PYTHONUNBUFFERED: "1",
       PYTHONIOENCODING: "utf-8",
     } as Record<string, string>;
-    // -u = unbuffered stdout/stderr (critical: main.py takes ~12s to import nexa runtime;
-    // without -u, the `ready` JSON line gets stuck in Python's stdout buffer on Windows)
-    this.proc = spawn(pyExe, ["-u", "src/main.py"], {
-      cwd: opts.projectRoot, env, stdio: ["pipe", "pipe", "pipe"],
+    // Method A: use wrapper script for robust env setup (conda/shell) + -u unbuffered
+    // Method B (fallback): direct python -u spawn
+    const isWin = process.platform === "win32";
+    const wrapperScript = isWin ? "nexa-cc-engine.cmd" : "nexa-cc-engine.sh";
+    const wrapperPath = path.join(opts.projectRoot, wrapperScript);
+    const useWrapper = existsSync(wrapperPath);
+    const spawnCmd = useWrapper
+      ? wrapperPath
+      : pyExe;
+    const spawnArgs = useWrapper
+      ? [opts.permissionMode || "default"]
+      : ["-u", "src/main.py"];
+    this.proc = spawn(spawnCmd, spawnArgs, {
+      cwd: opts.projectRoot, env,
+      stdio: ["pipe", "pipe", "pipe"],
+      shell: useWrapper,
     });
     this.rl = readline.createInterface({ input: this.proc.stdout });
     this.rl.on("line", (line) => {
