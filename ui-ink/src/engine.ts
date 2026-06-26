@@ -75,7 +75,7 @@ export class Engine {
       if (text) this.stderrBuf.push(text);
     });
     this.proc.on("exit", (code) => {
-      clearTimeout(this.startupTimer);
+      if (this.startupTimer) clearTimeout(this.startupTimer);
       if (code !== 0 && code !== null) {
         const stderr = this.stderrBuf.join("\n").slice(-500);
         this.onEvent({ type: "error", message: `Engine exited (code ${code}): ${stderr}` });
