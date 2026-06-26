@@ -562,6 +562,31 @@ function ActiveRow({
   );
 }
 
+function ModeNotice({ mode }: { mode: PermMode }) {
+  if (mode === "default") return null;
+  const copy: Record<Exclude<PermMode, "default">, { label: string; detail: string }> = {
+    plan: {
+      label: "plan mode on",
+      detail: "Claude should research and propose a plan before editing files.",
+    },
+    bypass: {
+      label: "bypass permissions on",
+      detail: "Tool calls may run without confirmation.",
+    },
+    auto: {
+      label: "auto permissions on",
+      detail: "Low-risk tool calls may proceed automatically.",
+    },
+  };
+  const current = copy[mode];
+  return (
+    <Box paddingX={1}>
+      <Text color={MODE_COLORS[mode]} bold>{mode === "plan" ? "⏸ " : mode === "bypass" ? "⏵⏵ " : "● "}{current.label}</Text>
+      <Text dimColor> · {current.detail} Shift+Tab cycles modes.</Text>
+    </Box>
+  );
+}
+
 function FooterBar({
   mode,
   model,
@@ -932,6 +957,7 @@ function App() {
         <StartupCard model={model} cwd={PROJECT_DISPLAY} />
         {engineReady && <StartupContextBlock />}
         {showSlash && <SlashOverlay matches={slashMatches} selected={Math.min(slashSelected, Math.max(0, slashMatches.length - 1))} query={input} />}
+        <ModeNotice mode={permMode} />
         <PromptBox
           input={input}
           enabled={engineReady && isRawModeSupported}
@@ -965,6 +991,7 @@ function App() {
       )}
       {showSlash && <SlashOverlay matches={slashMatches} selected={Math.min(slashSelected, Math.max(0, slashMatches.length - 1))} query={input} />}
       <ActiveRow busy={busy} thinkTool={thinkTool} thinkPhase={thinkPhase} elapsed={elapsed} tokensOut={tokensOut} />
+      <ModeNotice mode={permMode} />
       <PromptBox
         input={input}
         enabled={isRawModeSupported}
