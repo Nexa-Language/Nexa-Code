@@ -180,6 +180,40 @@ function codeLineColor(lang: string, line: string): string {
   return DIM;
 }
 
+function markdownTableCells(line: string): string[] | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("|") || !trimmed.includes("|", 1)) return null;
+  const cells = trimmed.split("|").slice(1, trimmed.endsWith("|") ? -1 : undefined).map((cell) => cell.trim());
+  return cells.length > 1 ? cells : null;
+}
+
+function isMarkdownTableSeparator(cells: string[]): boolean {
+  return cells.every((cell) => /^:?-{3,}:?$/.test(cell.replace(/\s/g, "")));
+}
+
+function MarkdownTable({ rows }: { rows: string[][] }) {
+  const widths = rows.reduce<number[]>((acc, row) => {
+    row.forEach((cell, idx) => {
+      acc[idx] = Math.max(acc[idx] || 0, cell.length);
+    });
+    return acc;
+  }, []);
+  return (
+    <Box flexDirection="column">
+      {rows.map((row, rowIdx) => (
+        <Text key={rowIdx}>
+          {row.map((cell, cellIdx) => (
+            <React.Fragment key={cellIdx}>
+              <Text color={rowIdx === 0 ? BLUE : undefined}>{cell.padEnd(widths[cellIdx] || cell.length)}</Text>
+              {cellIdx < row.length - 1 && <Text color={DIM}> │ </Text>}
+            </React.Fragment>
+          ))}
+        </Text>
+      ))}
+    </Box>
+  );
+}
+
 function MarkdownView({ text }: { text: string }) {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const nodes: React.ReactNode[] = [];
@@ -231,6 +265,22 @@ function MarkdownView({ text }: { text: string }) {
     if (quote) {
       nodes.push(<Text key={i} color={DIM}>│ <InlineText text={quote[1]} /></Text>);
       continue;
+    }
+    const firstTableCells = markdownTableCells(line);
+    if (firstTableCells) {
+      const tableRows: string[][] = [];
+      let j = i;
+      while (j < lines.length) {
+        const cells = markdownTableCells(lines[j]);
+        if (!cells) break;
+        if (!isMarkdownTableSeparator(cells)) tableRows.push(cells);
+        j += 1;
+      }
+      if (tableRows.length > 1) {
+        nodes.push(<MarkdownTable key={`table-${i}`} rows={tableRows} />);
+        i = j - 1;
+        continue;
+      }
     }
     if (line.includes("|") && line.trim().startsWith("|")) {
       const cells = line.split("|").slice(1, -1).map((c) => c.trim());
