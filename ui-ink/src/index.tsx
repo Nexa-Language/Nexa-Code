@@ -153,15 +153,63 @@ function readGitDirty(): boolean {
   }
 }
 
+type InlinePart = { kind: "plain" | "code" | "bold" | "italic"; text: string };
+
+function inlineParts(text: string): InlinePart[] {
+  const parts: InlinePart[] = [];
+  let i = 0;
+  const pushPlain = (value: string) => {
+    if (value) parts.push({ kind: "plain", text: value });
+  };
+
+  while (i < text.length) {
+    if (text[i] === "`") {
+      const end = text.indexOf("`", i + 1);
+      if (end > i + 1) {
+        parts.push({ kind: "code", text: text.slice(i + 1, end) });
+        i = end + 1;
+        continue;
+      }
+    }
+    if (text.startsWith("**", i)) {
+      const end = text.indexOf("**", i + 2);
+      if (end > i + 2) {
+        parts.push({ kind: "bold", text: text.slice(i + 2, end) });
+        i = end + 2;
+        continue;
+      }
+    }
+    if (text[i] === "*") {
+      const end = text.indexOf("*", i + 1);
+      if (end > i + 1) {
+        parts.push({ kind: "italic", text: text.slice(i + 1, end) });
+        i = end + 1;
+        continue;
+      }
+    }
+    const next = ["`", "*"].map((ch) => text.indexOf(ch, i + 1)).filter((idx) => idx >= 0).sort((a, b) => a - b)[0];
+    const end = next ?? text.length;
+    pushPlain(text.slice(i, end));
+    i = end;
+  }
+  return parts;
+}
+
 function InlineText({ text, color }: { text: string; color?: string }) {
-  const pieces = text.split(/(`[^`]+`)/g);
+  const pieces = inlineParts(text);
   return (
     <Text color={color}>
       {pieces.map((piece, idx) => {
-        if (piece.startsWith("`") && piece.endsWith("`")) {
-          return <Text key={idx} color={BLUE}>{piece.slice(1, -1)}</Text>;
+        if (piece.kind === "code") {
+          return <Text key={idx} color={BLUE}>{piece.text}</Text>;
         }
-        return <Text key={idx}>{piece}</Text>;
+        if (piece.kind === "bold") {
+          return <Text key={idx} bold>{piece.text}</Text>;
+        }
+        if (piece.kind === "italic") {
+          return <Text key={idx} italic>{piece.text}</Text>;
+        }
+        return <Text key={idx}>{piece.text}</Text>;
       })}
     </Text>
   );
