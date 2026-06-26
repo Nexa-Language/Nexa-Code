@@ -483,19 +483,21 @@ function SlashOverlay({ matches, selected, query }: { matches: Command[]; select
         matches.map((c, i) => {
           const isSelected = i === selected;
           const source = c.source || "builtin";
+          const descWidth = Math.max(18, width - (c.hint ? 58 : 38));
           return (
             <Text key={c.name}>
               <Text color={isSelected ? ORANGE : DIM}>{isSelected ? "› " : "  "}</Text>
               <Text color={isSelected ? ORANGE : DIM}>{c.name.padEnd(18)}</Text>
               <Text color={DIM}>{source.padEnd(12)}</Text>
-              <Text color={isSelected ? GREY : DIM}>{truncateMiddle(c.desc, Math.max(24, width - 38))}</Text>
+              {c.hint && <Text color={isSelected ? BLUE : DIM}>{c.hint.padEnd(18)}</Text>}
+              <Text color={isSelected ? GREY : DIM}>{truncateMiddle(c.desc, descWidth)}</Text>
             </Text>
           );
         })
       )}
       <Text dimColor>
         ↑/↓ navigate · tab complete
-        {selectedCommand ? ` · enter ${selectedCommand.name}` : " · enter keeps typing"}
+        {selectedCommand ? ` · enter ${selectedCommand.name}${selectedCommand.hint ? ` ${selectedCommand.hint}` : ""}` : " · enter keeps typing"}
       </Text>
     </Box>
   );
