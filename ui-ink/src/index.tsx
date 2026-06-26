@@ -37,6 +37,24 @@ type Entry =
   | { kind: "system"; text: string; tone?: "info" | "success" | "warning" }
   | { kind: "error"; message: string; source: "engine" | "tool" | "ui" };
 
+type PickerKind = "model" | "resume";
+type PickerStatus = "loading" | "ready" | "empty" | "error";
+type PickerItem = {
+  label: string;
+  value: string;
+  detail?: string;
+  active?: boolean;
+  disabled?: boolean;
+};
+type PickerState = {
+  kind: PickerKind;
+  title: string;
+  status: PickerStatus;
+  items: PickerItem[];
+  selected: number;
+  error?: string;
+};
+
 const MODES = ["default", "plan", "bypass", "auto"] as const;
 type PermMode = typeof MODES[number];
 const MODE_COLORS: Record<PermMode, string> = {
@@ -127,6 +145,25 @@ function formatDuration(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}m${seconds}s`;
+}
+
+function commandRoot(value: string): string {
+  return value.trim().split(/\s+/, 1)[0] || "";
+}
+
+function isPickerCommand(value: string): value is "/model" | "/resume" | "/rewind" {
+  return value === "/model" || value === "/resume" || value === "/rewind";
+}
+
+function pickerTitle(kind: PickerKind): string {
+  return kind === "model" ? "Select model" : "Resume session";
+}
+
+function sessionLabel(sessionPath: string): string {
+  if (!sessionPath) return "(unknown session)";
+  const normalized = sessionPath.replace(/\\/g, "/");
+  const parts = normalized.split("/").filter(Boolean);
+  return parts.slice(-2).join("/") || normalized;
 }
 
 function readGitBranch(): string {
@@ -576,6 +613,59 @@ function SlashOverlay({ matches, selected, query }: { matches: Command[]; select
   );
 }
 
+function CommandPicker({ picker }: { picker: PickerState }) {
+  const width = terminalWidth();
+  const subtitle = picker.kind === "model"
+    ? "Choose a model for the next turns"
+    : "Choose a previous conversation to continue";
+  const selected = picker.items[Math.min(picker.selected, Math.max(0, picker.items.length - 1))];
+  return (
+    <Box flexDirection="column" borderStyle="round" borderColor={ORANGE} paddingX={2} paddingY={1} marginX={2} marginY={1}>
+      <Text>
+        <Text color={ORANGE}>{TEARDROP} </Text>
+        <Text color={ORANGE} bold>{picker.title}</Text>
+        <Text dimColor> · {subtitle}</Text>
+      </Text>
+      {picker.status === "loading" && (
+        <Text color={DIM}><Spinner type="dots" /> Loading options from engine…</Text>
+      )}
+      {picker.status === "error" && (
+        <Text color={RED}>{picker.error || "Could not load options."}</Text>
+      )}
+      {picker.status === "empty" && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text dimColor>{picker.kind === "model" ? "No alternate models were reported by the engine." : "No previous sessions were found for this project."}</Text>
+          <Text dimColor>Esc closes this picker.</Text>
+        </Box>
+      )}
+      {picker.status === "ready" && (
+        <Box flexDirection="column" marginTop={1}>
+          {picker.items.map((item, idx) => {
+            const isSelected = idx === picker.selected;
+            const labelWidth = Math.min(34, Math.max(16, Math.floor(width * 0.34)));
+            const detailWidth = Math.max(18, width - labelWidth - 20);
+            return (
+              <Text key={`${item.value}-${idx}`}>
+                <Text color={isSelected ? ORANGE : DIM}>{isSelected ? "› " : "  "}</Text>
+                <Text color={item.disabled ? DIM : isSelected ? ORANGE : BLUE} bold={isSelected && !item.disabled}>
+                  {truncateMiddle(item.label, labelWidth).padEnd(labelWidth)}
+                </Text>
+                {item.active && <Text color={GREEN}> current </Text>}
+                {!item.active && item.disabled && <Text color={DIM}> unavailable </Text>}
+                {!item.active && !item.disabled && <Text color={DIM}>         </Text>}
+                <Text color={isSelected ? GREY : DIM}>{truncateMiddle(item.detail || item.value, detailWidth)}</Text>
+              </Text>
+            );
+          })}
+          <Text dimColor>
+            ↑/↓ navigate · enter {selected?.disabled ? "unavailable" : "select"} · esc close
+          </Text>
+        </Box>
+      )}
+    </Box>
+  );
+}
+
 function PromptBox({
   input,
   enabled,
@@ -812,6 +902,7 @@ function App() {
   const [tokensIn, setTokensIn] = useState(0);
   const [tokensOut, setTokensOut] = useState(0);
   const [slashSelected, setSlashSelected] = useState(0);
+  const [picker, setPicker] = useState<PickerState | null>(null);
   const [engineReady, setEngineReady] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number | null>(null);
@@ -827,7 +918,7 @@ function App() {
   const draftBeforeHistoryRef = useRef("");
   const engineRef = useRef<Engine | null>(null);
 
-  const showSlash = input.startsWith("/") && !input.includes(" ") && !input.includes("\n") && !busy && !permission;
+  const showSlash = input.startsWith("/") && !input.includes(" ") && !input.includes("\n") && !busy && !permission && !picker;
   const slashMatches = useMemo(() => showSlash ? commandMatches(input) : [], [input, showSlash]);
 
   const handleInputChange = useCallback((value: string) => {
@@ -871,6 +962,12 @@ function App() {
           turnStartRef.current = 0;
           setThinkPhase("");
           setThinkTool("");
+        }
+        if (e.phase === "interrupted") {
+          setBusy(false);
+          setEscapeArmed(false);
+          turnStartRef.current = 0;
+          setEntries((es) => [...es, { kind: "system", tone: "warning", text: "Interrupted" }]);
         }
         if (typeof e.tokens_in === "number") setTokensIn(e.tokens_in);
         if (typeof e.tokens_out === "number") setTokensOut(e.tokens_out);
@@ -926,12 +1023,65 @@ function App() {
       case "mode_changed":
         if (MODES.includes(e.mode as PermMode)) setPermMode(e.mode as PermMode);
         break;
-      case "command_result":
-        setEntries((es) => [...es, { kind: "assistant", text: e.result }]);
+      case "model_list": {
+        const items = e.models.map((item) => ({
+          label: item.name,
+          value: item.name,
+          detail: item.description || (item.name === e.current ? "Current model" : "Available model"),
+          active: item.name === e.current,
+          disabled: item.available === false,
+        }));
+        setPicker({
+          kind: "model",
+          title: pickerTitle("model"),
+          status: items.length ? "ready" : "empty",
+          items,
+          selected: Math.max(0, items.findIndex((item) => item.active)),
+        });
         setBusy(false);
+        break;
+      }
+      case "session_list": {
+        const items = e.sessions.map((session) => ({
+          label: session.title || sessionLabel(session.path),
+          value: session.path,
+          detail: [
+            session.msg_count ? `${session.msg_count} messages` : "",
+            session.updated_at || session.path,
+          ].filter(Boolean).join(" · "),
+        }));
+        setPicker({
+          kind: "resume",
+          title: pickerTitle("resume"),
+          status: items.length ? "ready" : "empty",
+          items,
+          selected: 0,
+        });
+        setBusy(false);
+        break;
+      }
+      case "command_result":
+        if (isPickerCommand(commandRoot(e.name))) {
+          if (e.result.toLowerCase().includes("error")) {
+            setPicker((current) => current ? { ...current, status: "error", error: e.result } : current);
+          }
+        } else {
+          setEntries((es) => [...es, { kind: "assistant", text: e.result }]);
+        }
+        setBusy(false);
+        break;
+      case "usage":
+        if (typeof e.cumulative_input === "number") setTokensIn(e.cumulative_input);
+        else if (typeof e.input === "number") setTokensIn(e.input);
+        if (typeof e.cumulative_output === "number") setTokensOut(e.cumulative_output);
+        else if (typeof e.output === "number") setTokensOut(e.output);
+        break;
+      case "info":
+        setEntries((es) => [...es, { kind: "system", tone: "info", text: e.message }]);
         break;
       case "error":
         setEntries((es) => [...es, { kind: "error", source: "engine", message: e.message }]);
+        setPicker((current) => current ? { ...current, status: "error", error: e.message } : current);
         setBusy(false);
         setThinkPhase("");
         setThinkTool("");
@@ -976,6 +1126,40 @@ function App() {
 
   useInput((rawInput, key) => {
     if (permission) return;
+    if (picker) {
+      if (key.escape) {
+        setPicker(null);
+        return;
+      }
+      if (picker.status === "ready" && picker.items.length > 0) {
+        if (key.upArrow) {
+          setPicker((current) => current ? { ...current, selected: current.selected <= 0 ? current.items.length - 1 : current.selected - 1 } : current);
+          return;
+        }
+        if (key.downArrow) {
+          setPicker((current) => current ? { ...current, selected: (current.selected + 1) % current.items.length } : current);
+          return;
+        }
+        if (key.return) {
+          const item = picker.items[Math.min(picker.selected, picker.items.length - 1)];
+          if (!item || item.disabled) return;
+          setPicker(null);
+          if (picker.kind === "model") {
+            appendSystem(`Switching model to ${item.label}.`, "info");
+            setModel(item.value);
+            engineRef.current?.sendCommand(`/model ${item.value}`);
+          } else {
+            appendSystem(`Resuming ${item.label}.`, "info");
+            engineRef.current?.sendCommand(`/resume ${item.value}`);
+          }
+          setBusy(true);
+          setElapsed(0);
+          turnStartRef.current = Date.now();
+          return;
+        }
+      }
+      return;
+    }
     if (!busy && (rawInput === "\u0003" || (key.ctrl && rawInput === "c"))) {
       if (exitArmed) {
         engineRef.current?.sendExit();
@@ -1037,11 +1221,12 @@ function App() {
     if (busy && key.escape) {
       if (!escapeArmed) {
         setEscapeArmed(true);
-        setEntries((es) => [...es, { kind: "system", tone: "warning", text: "Esc again to clear. Engine-side cancellation requires protocol support." }]);
+        setEntries((es) => [...es, { kind: "system", tone: "warning", text: "Esc again to interrupt the current turn." }]);
         setTimeout(() => setEscapeArmed(false), 1800);
         return;
       }
       setEscapeArmed(false);
+      engineRef.current?.sendCancel();
       setBusy(false);
       setThinkPhase("");
       setThinkTool("");
@@ -1050,7 +1235,7 @@ function App() {
         if (s.trim()) setEntries((es) => [...es, { kind: "assistant", text: s.trim() + "  ⏸ Interrupted" }]);
         return "";
       });
-      setEntries((es) => [...es, { kind: "system", tone: "warning", text: "Interrupted locally. Engine-side cancellation requires protocol support." }]);
+      setEntries((es) => [...es, { kind: "system", tone: "warning", text: "Interrupt requested." }]);
       return;
     }
     if (!input && (rawInput === "x" || rawInput === "\u000f" || (key.ctrl && rawInput.toLowerCase() === "o"))) {
@@ -1082,6 +1267,7 @@ function App() {
     if (!v) return;
     setShowStartup(false);
     setExitArmed(false);
+    setPicker(null);
     const eng = engineRef.current;
     if (v === "exit" || v === "/exit" || v === "/quit") {
       eng?.sendExit();
@@ -1098,6 +1284,17 @@ function App() {
     setTokensIn(estimateTokens(v));
     setTokensOut(0);
     turnStartRef.current = Date.now();
+    const root = commandRoot(v);
+    if (isPickerCommand(root) && root === v) {
+      const kind: PickerKind = root === "/model" ? "model" : "resume";
+      setPicker({
+        kind,
+        title: pickerTitle(kind),
+        status: "loading",
+        items: [],
+        selected: 0,
+      });
+    }
     if (v.startsWith("/")) eng?.sendCommand(v);
     else eng?.sendMessage(v);
   };
@@ -1110,13 +1307,14 @@ function App() {
       <Box flexDirection="column">
         <StartupCard model={model} cwd={PROJECT_DISPLAY} />
         {engineReady && <StartupContextBlock />}
+        {picker && <CommandPicker picker={picker} />}
         {showSlash && <SlashOverlay matches={slashMatches} selected={Math.min(slashSelected, Math.max(0, slashMatches.length - 1))} query={input} />}
         <ModeNotice mode={permMode} />
         <PromptBox
           input={input}
-          enabled={engineReady && isRawModeSupported}
+          enabled={engineReady && isRawModeSupported && !picker}
           busy={false}
-          loadingText="Loading engine…"
+          loadingText={picker ? "Picker open…" : "Loading engine…"}
           onChange={handleInputChange}
           onSubmit={submit}
         />
@@ -1143,14 +1341,15 @@ function App() {
           }}
         />
       )}
+      {picker && <CommandPicker picker={picker} />}
       {showSlash && <SlashOverlay matches={slashMatches} selected={Math.min(slashSelected, Math.max(0, slashMatches.length - 1))} query={input} />}
       <ActiveRow busy={busy} thinkTool={thinkTool} thinkPhase={thinkPhase} elapsed={elapsed} tokensOut={tokensOut} />
       <ModeNotice mode={permMode} />
       <PromptBox
         input={input}
-        enabled={isRawModeSupported}
+        enabled={isRawModeSupported && !picker}
         busy={busy}
-        loadingText="(run in a real terminal)"
+        loadingText={picker ? "Picker open…" : "(run in a real terminal)"}
         onChange={handleInputChange}
         onSubmit={submit}
       />

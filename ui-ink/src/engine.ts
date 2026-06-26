@@ -12,8 +12,12 @@ export type EngineEvent =
   | { type: "tool_result"; name: string; result: string }
   | { type: "permission_request"; request_id: number; tool: string; args: string }
   | { type: "command_result"; name: string; result: string }
+  | { type: "model_list"; current: string; models: Array<{ name: string; available?: boolean; description?: string }> }
+  | { type: "session_list"; sessions: Array<{ path: string; title?: string; updated_at?: string; msg_count?: number }> }
   | { type: "done"; reply: string }
   | { type: "error"; message: string }
+  | { type: "info"; message: string }
+  | { type: "usage"; input?: number; output?: number; total?: number; cumulative_input?: number; cumulative_output?: number; estimated?: boolean }
   | { type: "session_end" }
   // Phase 15 H3: structured turn status (thinking phases)
   | { type: "turn_status"; phase: string; tool?: string; elapsed?: number; tokens_in?: number; tokens_out?: number }
@@ -80,6 +84,7 @@ export class Engine {
   }
   // Phase 15 H5: send mode change to engine
   sendSetMode(mode: string): void { this.send({ type: "set_mode", mode }); }
+  sendCancel(): void { this.send({ type: "cancel" }); }
   sendExit(): void { this.send({ type: "exit" }); }
   close(): void { try { this.proc.kill(); } catch { /* noop */ } }
 }
