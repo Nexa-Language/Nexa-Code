@@ -1,0 +1,71 @@
+// search_extra.nx — SearchExtraTools + ExecuteExtraTool（延迟工具发现+执行）
+// Ported from SearchExtraToolsTool + ExecuteTool schemas.
+// SearchExtraTools: TF-IDF 搜索工具描述匹配 query。ExecuteExtraTool: 执行搜索到的工具。
+@tool("Search for available tools by semantic query. query: what you want to do. max_results: max results (default 5). Returns matching tool names and descriptions. Use when a capability might exist but isn't in your core tools.")
+fn SearchExtraTools(query: string, max_results: string): string {
+    python! """
+import json
+try:
+    from src.runtime.tools_registry import LOCAL_TOOLS, TOOL_HOOKS
+except Exception:
+    return 'Tool registry not available.'
+# 从 __tool_X_schema 获取描述（globals() = 当前模块级，含所有 @tool fn 编译的 schema）
+_g = globals()
+_schemas = {}
+for _name in list(_g.keys()):
+    if _name.startswith('__tool_') and _name.endswith('_schema'):
+        try:
+            _s = _g[_name]
+            _tname = _s.get('name', '')
+            _desc = _s.get('description', '')
+            if _tname and _desc:
+                _schemas[_tname] = _desc
+        except Exception:
+            pass
+if not _schemas:
+    return 'No tools found in registry.'
+_q = (query or '').lower().split()
+_mr = 5
+try:
+    _mr = int(max_results) if max_results else 5
+except Exception:
+    pass
+# 简单 TF 匹配（词频重叠）
+_scored = []
+for _tname, _desc in _schemas.items():
+    _dl = _desc.lower()
+    _score = sum(1 for _w in _q if _w in _dl)
+    if _score > 0 or len(_q) == 0:
+        _scored.append((_score, _tname, _desc))
+_scored.sort(key=lambda x: -x[0])
+if not _scored:
+    return 'No matching tools found for: %s' % query
+_lines = ['Matching tools (%d):' % min(len(_scored), _mr)]
+for _sc, _tn, _td in _scored[:_mr]:
+    _lines.append('  %s — %s' % (_tn, _td[:100]))
+return chr(10).join(_lines)
+"""
+}
+
+@tool("Execute a tool by name. tool_name: the tool to call (from SearchExtraTools results). params_json: JSON object of parameters. Use for deferred/MCP/skill tools not in core tool list.")
+fn ExecuteExtraTool(tool_name: string, params_json: string): string {
+    python! """
+import json
+try:
+    from src.runtime.tools_registry import execute_tool, LOCAL_TOOLS
+except Exception:
+    return 'Tool registry not available.'
+_tn = (tool_name or '').strip()
+if not _tn:
+    return 'tool_name is required.'
+if _tn not in LOCAL_TOOLS:
+    return 'Tool not found: %s. Use SearchExtraTools to find available tools.' % _tn
+try:
+    _params = json.loads(params_json) if params_json else {}
+except Exception as _e:
+    return 'Invalid params JSON: %s' % _e
+_args = json.dumps(_params)
+_result = execute_tool(_tn, _args)
+return _result
+"""
+}

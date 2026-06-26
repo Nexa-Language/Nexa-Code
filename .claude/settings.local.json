@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": ["Read", "Glob", "Grep", "TodoWrite", "EnterPlanMode", "ExitPlanMode", "VerifyPlan", "WebSearch"],
+    "ask": ["Edit", "Write", "Bash", "NotebookEdit", "Agent", "WebFetch", "MCPTool", "ListMcpResources", "ReadMcpResource", "McpAuth"],
+    "deny": ["Bash(rm:*)"]
+  }
+}

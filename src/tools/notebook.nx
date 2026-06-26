@@ -1,0 +1,127 @@
+// =============================================================================
+// notebook.nx — NotebookEdit 工具（忠实移植 NotebookEditTool）
+// -----------------------------------------------------------------------------
+// Ported from (唯一翻译源 refs/claude-code-ts):
+//   packages/builtin-tools/src/tools/NotebookEditTool/
+//     - constants.ts:2            → 工具名 'NotebookEdit'
+//     - prompt.ts:1-3             → DESCRIPTION / PROMPT (replace/insert/delete, cell 0-indexed)
+//     - NotebookEditTool.ts:30-57 → inputSchema (notebook_path/cell_id/new_source/cell_type/edit_mode)
+//     - NotebookEditTool.ts:297-372 → call: resolve path / 解析 JSON / 定位 cell (id||numeric||0)
+//     - NotebookEditTool.ts:374-432 → replace(清 outputs)/insert(after)/delete + cell_type 切换
+//     - NotebookEditTool.ts:433-436 → 写回 JSON.stringify(indent=1)
+// 忠实度：full（replace/insert/delete / cell_id 定位(id/数字索引/默认0) / replace 清
+//   execution_count+outputs / cell_type 切换 / insert 在目标后 / 越界 replace→insert / 写回 indent 1）。
+// python! 用单 \n（真换行）。
+// =============================================================================
+
+@tool("Completely replaces the contents of a specific cell in a Jupyter notebook (.ipynb) with new source. The notebook_path must be an absolute path. Use edit_mode=insert to add a new cell after the cell with the given cell_id (or at the beginning if not specified). Use edit_mode=delete to delete the cell. Defaults to replace.")
+fn NotebookEdit(notebook_path: string, cell_id: string, new_source: string, cell_type: string, edit_mode: string): string {
+    python! """
+import os
+import json
+import random
+import string
+
+fp = (notebook_path or '').strip()
+if globals().get('_CCPORT_MODE', 'default') == 'plan':
+    return '[Permission] NotebookEdit is not allowed in plan mode (read-only).'
+full = fp if os.path.isabs(fp) else os.path.abspath(fp)
+
+if not os.path.isfile(full):
+    return 'Notebook does not exist: %s' % notebook_path
+
+with open(full, 'r', encoding='utf-8', errors='replace') as _f:
+    _raw = _f.read()
+try:
+    nb = json.loads(_raw)
+except Exception:
+    return 'Notebook is not valid JSON.'
+
+_cells = nb.get('cells', [])
+_emode = (edit_mode or 'replace')
+if _emode not in ('replace', 'insert', 'delete'):
+    _emode = 'replace'
+_ctype = cell_type or None
+
+# 定位 cell index (NotebookEditTool.ts:354-372)
+def _parse_cell_id(_cid):
+    if _cid is None:
+        return None
+    if _cid.isdigit():
+        return int(_cid)
+    # cell-N 格式
+    if _cid.startswith('cell-'):
+        _rest = _cid[5:]
+        if _rest.isdigit():
+            return int(_rest)
+    return None
+
+_cidx = None
+if cell_id:
+    for _i, _c in enumerate(_cells):
+        if _c.get('id') == cell_id:
+            _cidx = _i
+            break
+    if _cidx is None:
+        _parsed = _parse_cell_id(cell_id)
+        if _parsed is not None:
+            _cidx = _parsed
+if _cidx is None:
+    _cidx = 0   # 默认开头
+
+# insert: 在目标 cell 之后 (NotebookEditTool.ts:369-371)
+if _emode == 'insert':
+    _cidx = _cidx + 1
+
+# 越界 replace → insert (NotebookEditTool.ts:374-381)
+if _emode == 'replace' and _cidx == len(_cells):
+    _emode = 'insert'
+    if not _ctype:
+        _ctype = 'code'
+
+# 新 cell id（nbformat>=4.5）(NotebookEditTool.ts:385-394)
+_nbformat = nb.get('nbformat', 4)
+_nbminor = nb.get('nbformat_minor', 0)
+_supports_id = (_nbformat > 4) or (_nbformat == 4 and _nbminor >= 5)
+_new_id = None
+if _supports_id:
+    if _emode == 'insert':
+        _new_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=14))
+    elif cell_id:
+        _new_id = cell_id
+
+# 执行编辑 (NotebookEditTool.ts:396-432)
+if _emode == 'delete':
+    if 0 <= _cidx < len(_cells):
+        _cells.pop(_cidx)
+    else:
+        return 'Cell index out of range for delete: %d (cells: %d)' % (_cidx, len(_cells))
+elif _emode == 'insert':
+    if _ctype == 'markdown':
+        _ncell = {'cell_type': 'markdown', 'id': _new_id, 'source': new_source, 'metadata': {}}
+    else:
+        _ncell = {'cell_type': 'code', 'id': _new_id, 'source': new_source,
+                  'metadata': {}, 'execution_count': None, 'outputs': []}
+    _cells.insert(_cidx, _ncell)
+else:
+    # replace
+    if not (0 <= _cidx < len(_cells)):
+        return 'Cell index out of range for replace: %d (cells: %d)' % (_cidx, len(_cells))
+    _tc = _cells[_cidx]
+    _tc['source'] = new_source
+    if _tc.get('cell_type') == 'code':
+        _tc['execution_count'] = None
+        _tc['outputs'] = []
+    if _ctype and _ctype != _tc.get('cell_type'):
+        _tc['cell_type'] = _ctype
+
+nb['cells'] = _cells
+# 写回 indent=1 (NotebookEditTool.ts:434-436)
+with open(full, 'w', encoding='utf-8') as _f:
+    json.dump(nb, _f, ensure_ascii=False, indent=1)
+
+globals().setdefault('_CCPORT_READ_STATE', {})[full] = {
+    'mtime': os.path.getmtime(full), 'offset': 1, 'limit': None, 'content': json.dumps(nb)}
+return 'Successfully updated notebook: %s (%s, cell %d, %d cells total)' % (notebook_path, _emode, _cidx, len(_cells))
+"""
+}

@@ -1,0 +1,552 @@
+// =============================================================================
+// commands.nx — 斜杠命令忠实移植（Phase 3）
+// -----------------------------------------------------------------------------
+// 每个命令 handler 忠实移植自 refs/claude-code-ts/src/commands/<name>/ 的核心行为。
+// UI 渲染（Ink/React 弹窗、picker、对话框）是平台层细节，本移植对齐【命令行为】，
+// 文本输出经 std.ui/print。命令经 main.nx flow 的 run_command 派发接入（对齐
+// REPL.tsx:3967-4036 onSubmit 的「/ 开头→命令派发」）。
+// 翻译源（逐命令）：
+//   /help    ← commands/help/index.ts + help.tsx（HelpV2 列出命令）
+//   /clear   ← commands/clear/clear.ts + conversation.ts:70-281（clearConversation：reset messages/readFileState/cost）
+//   /compact ← commands/compact/compact.ts（compactConversation：摘要替换旧消息）
+//   /model   ← commands/model/model.tsx（显示/切换模型）
+//   /cost    ← commands/cost→usage（token/成本统计）
+//   /status  ← commands/status/status.tsx（Settings>Status：cwd/model/git/config）
+//   /exit    ← commands/exit/exit.tsx（gracefulShutdown）
+//   /resume  ← commands/resume（列出/恢复会话）
+//   /rewind  ← commands/rewind/rewind.ts（回退到某条消息）
+//   /vim     ← commands/vim/vim.ts（切换 editorMode normal↔vim）
+//   /fast    ← commands/fast/fast.tsx（切换 fastMode；Opus 专属）
+//   /config  ← commands/config/config.tsx（显示/编辑 settings）
+//   /context ← commands/context（显示 CLAUDE.md/git/env 上下文，复用 context.nx）
+// 忠实度：见各 handler 备注（行为对齐；UI/会话存储/模型菜单等平台层项标 partial）。
+// python! 用单 \n（真换行）；复合布尔在 python! 内；exit 经 "__CC_EXIT__" 哨兵返回。
+// =============================================================================
+
+// 派发斜杠命令。返回命令输出文本；/exit 返回 "__CC_EXIT__" 哨兵（flow 据此退出）。
+@tool("Dispatch a slash command (Phase 3 + Phase 7). Returns output text; /exit returns __CC_EXIT__ sentinel; /init returns __AS_PROMPT__:... (flow routes to engine).")
+fn run_command(cmd_line: string): string {
+    python! """
+import os
+
+# --- 解析 命令名 + 参数 (REPL.tsx:4011-4018) ---
+_line = (cmd_line or '').strip()
+if _line.startswith('/'):
+    _line = _line[1:]
+_sp = _line.find(' ')
+if _sp == -1:
+    _name, _args = _line, ''
+else:
+    _name, _args = _line[:_sp], _line[_sp:].strip()
+
+def _agent():
+    return globals().get('Coder')
+
+# --- /help: commands/help (HelpV2 列出命令) ---
+def _help():
+    _cmds = [
+        ('/help', 'Show help and available commands'),
+        ('/clear', 'Clear conversation history and free up context'),
+        ('/compact [instructions]', 'Clear conversation history but keep a summary'),
+        ('/model', 'Show / switch the current model'),
+        ('/cost', 'Show token usage and cost'),
+        ('/status', 'Show account/session status (cwd, model, git)'),
+        ('/context', 'Show the assembled context (CLAUDE.md, git, env)'),
+        ('/config', 'Show config / settings'),
+        ('/vim', 'Toggle editor mode (normal <-> vim)'),
+        ('/fast', 'Toggle fast mode (Opus-specific; note under GLM)'),
+        ('/rewind', 'Rewind to a previous message'),
+        ('/resume', 'Resume a previous session'),
+        ('/init', 'Analyze repo and create CLAUDE.md (agent-driven)'),
+        ('/doctor', 'Diagnose installation and settings'),
+        ('/add-dir <path>', 'Add a working directory'),
+        ('/memory', 'Show CLAUDE.md memory file hierarchy'),
+        ('/permissions', 'Show allow/deny permission rules and mode'),
+        ('/agents', 'List configured agents'),
+        ('/mcp', 'Show configured MCP servers'),
+        ('/copy', 'Copy last assistant reply to clipboard'),
+        ('/usage', 'Detailed token/cost statistics'),
+        ('/export', 'Export conversation to markdown file'),
+        ('/undo', 'Undo last file edit (restore snapshot)'),
+        ('/review', 'Show git diff for code review'),
+        ('/share', 'Share conversation as markdown file'),
+        ('/git <sub>', 'Git: status|log|branch|blame|stash|diff|cherry-pick|merge|push|pull'),
+        ('/pr', 'Create a PR (git push + gh pr create)'),
+        ('/login', 'Show API key / provider configuration'),
+        ('/exit', 'Exit the REPL'),
+    ]
+    _lines = ['Available commands:']
+    for _c, _d in _cmds:
+        _lines.append('  %s - %s' % (_c, _d))
+    return '\n'.join(_lines)
+
+# --- /clear: clear/clear.ts + conversation.ts:130,160 (reset messages + readFileState + cost) ---
+def _clear():
+    _a = _agent()
+    if _a is None:
+        return 'No agent.'
+    _a.messages = [{'role': 'system', 'content': _a.system_prompt}]
+    globals().get('_CCPORT_READ_STATE', {}).clear()
+    return 'Conversation cleared. Context freed.'
+
+# --- /compact: compact/compact.ts (compactConversation: 摘要替换旧消息) ---
+def _compact():
+    _a = _agent()
+    if _a is None:
+        return 'No agent.'
+    _msgs = [m for m in _a.messages if m.get('role') in ('user', 'assistant')]
+    if len(_msgs) < 2:
+        return 'No messages to compact'
+    try:
+        _client = _a._get_client()
+        _transcript = '\n'.join('[%s] %s' % (m.get('role'), str(m.get('content'))[:500]) for m in _msgs)
+        _sum_prompt = ('Summarize the conversation so far concisely, preserving key decisions, '
+                       'context, and any open tasks. Custom instructions: %s' % (_args or '(none)'))
+        _resp = _client.chat.completions.create(
+            model=_a.model, timeout=60,
+            messages=[{'role': 'system', 'content': _sum_prompt},
+                      {'role': 'user', 'content': _transcript}])
+        _summary = _resp.choices[0].message.content or '(empty summary)'
+        _a.messages = [{'role': 'system', 'content': _a.system_prompt},
+                       {'role': 'user', 'content': 'Previous conversation summary:\n' + _summary},
+                       {'role': 'assistant', 'content': 'Understood. I have the summary of our previous conversation.'}]
+        return 'Conversation compacted (summary kept). %d messages -> summary.' % len(_msgs)
+    except Exception as _e:
+        return 'Compact failed: %s' % _e
+
+# --- /model: model/model.tsx (显示当前模型) ---
+def _model():
+    _a = _agent()
+    if not _a:
+        return '(no agent)'
+    if _args:
+        # 运行时切换模型：/model <name>（设 Coder.model + 清客户端缓存，下一轮生效）
+        _new = _args.strip().split()[0]
+        _a.model = _new
+        for _attr in ('_client', '_client_cache', '__client_cache__'):
+            if hasattr(_a, _attr):
+                try:
+                    setattr(_a, _attr, None)
+                except Exception:
+                    pass
+        return 'Model switched to: %s (next turn uses it). Ensure the model is available on your API key.' % _new
+    return 'Current model: %s\nUsage: /model <name> to switch at runtime (e.g. /model glm-5.2; must have quota).' % _a.model
+
+# --- /cost: cost->usage (token/成本统计) ---
+def _cost():
+    _a = _agent()
+    _nmsg = len(_a.messages) if _a else 0
+    _lines = ['Session usage:',
+              '  Messages in context: %d' % _nmsg]
+    _lines.append('  (Detailed token/cost accounting is a runtime analytics subsystem; message count shown here. Full /cost port deferred.)')
+    return '\n'.join(_lines)
+
+# --- /status: status/status.tsx (Settings>Status: cwd/model/git) ---
+def _status():
+    import subprocess
+    _a = _agent()
+    _cwd = os.getcwd()
+    _branch = ''
+    try:
+        _b = subprocess.run(['git', 'branch', '--show-current'], capture_output=True, text=True, timeout=5)
+        _branch = (_b.stdout or '').strip()
+    except Exception:
+        pass
+    _lines = ['Status:',
+              '  Working directory: %s' % _cwd,
+              '  Model: %s' % (_a.model if _a else '(none)'),
+              '  Git branch: %s' % (_branch or '(not a git repo)'),
+              '  Messages: %d' % (len(_a.messages) if _a else 0)]
+    return '\n'.join(_lines)
+
+# --- /context: context (显示 CLAUDE.md/git/env，复用 context.nx) ---
+def _context():
+    try:
+        return build_user_context(_agent().model if _agent() else 'glm-4-flash')
+    except Exception as _e:
+        return 'Context error: %s' % _e
+
+# --- /config: config/config.tsx (显示 settings) ---
+def _config():
+    _paths = [os.path.join(os.getcwd(), '.claude', 'settings.local.json'),
+              os.path.join(os.getcwd(), '.claude', 'settings.json')]
+    _lines = ['Config:']
+    for _p in _paths:
+        if os.path.isfile(_p):
+            try:
+                with open(_p, 'r', encoding='utf-8') as _f:
+                    _lines.append('--- %s ---' % _p)
+                    _lines.append(_f.read())
+            except Exception as _e:
+                _lines.append('%s: read error %s' % (_p, _e))
+    if len(_lines) == 1:
+        _lines.append('  (no settings files found; using built-in defaults)')
+    return '\n'.join(_lines)
+
+# --- /vim: vim/vim.ts (切换 editorMode normal<->vim) ---
+def _vim():
+    _cfg = globals().setdefault('_CCPORT_GLOBAL_CONFIG', {})
+    _cur = _cfg.get('editorMode', 'normal')
+    if _cur == 'emacs':
+        _cur = 'normal'
+    _new = 'vim' if _cur == 'normal' else 'normal'
+    _cfg['editorMode'] = _new
+    if _new == 'vim':
+        return 'Editor mode set to vim. Use Escape key to toggle between INSERT and NORMAL modes.'
+    return 'Editor mode set to normal. Using standard (readline) keyboard bindings.'
+
+# --- /fast: fast/fast.tsx (切换 fastMode；Opus 专属) ---
+def _fast():
+    _cfg = globals().setdefault('_CCPORT_GLOBAL_CONFIG', {})
+    _cur = bool(_cfg.get('fastMode', False))
+    _cfg['fastMode'] = not _cur
+    _state = 'enabled' if (not _cur) else 'disabled'
+    _note = ('Fast mode uses the same frontier model with faster output (Opus-specific). '
+             'Under the GLM runtime, fast mode has no model effect; flag toggled for parity.')
+    return 'Fast mode %s. %s' % (_state, _note)
+
+# --- /rewind: rewind/rewind.ts (回退到某条消息；CC 是 UI picker) ---
+def _rewind():
+    _a = _agent()
+    if _a is None:
+        return 'No agent.'
+    if not _args or not _args.lstrip('-').isdigit():
+        return ('Rewind: CC opens a message picker (UI). Usage: /rewind <n> to drop the last n user/assistant turns. '
+                '(Full transcript-picker is a platform UI; numeric rewind provided here.)')
+    _n = int(_args)
+    _msgs = _a.messages
+    _kept = [_m for _m in _msgs if _m.get('role') == 'system']
+    _rest = [_m for _m in _msgs if _m.get('role') != 'system']
+    if _n >= len(_rest):
+        _a.messages = _kept
+        return 'Rewound: cleared all non-system messages.'
+    _a.messages = _kept + _rest[:len(_rest) - _n * 2] if len(_rest) >= _n * 2 else _kept
+    return 'Rewound %d turn(s).' % _n
+
+# --- /resume: resume (列出/恢复会话；CC 走会话存储 + UI) ---
+def _resume():
+    return ('Resume: CC lists previous sessions from session storage and loads one (UI picker). '
+            'Session storage + transcript resume is a platform subsystem; not ported in Phase 3. '
+            'Use a fresh session or /clear.')
+
+# --- /exit: exit/exit.tsx (gracefulShutdown) ---
+def _exit():
+    return '__CC_EXIT__'
+
+# --- /init: init.ts (NEW_INIT_PROMPT, local-prompt → agent 调研+写 CLAUDE.md) ---
+def _init():
+    _p = (
+        "Set up a minimal CLAUDE.md for this repo. CLAUDE.md loads into every session, so keep it concise — only what Claude would get wrong without it. "
+        "Steps: (1) survey the codebase — read manifest files (package.json / pyproject.toml / Cargo.toml / go.mod / etc.), README, Makefile / build configs, CI config, existing CLAUDE.md. "
+        "(2) write a concise CLAUDE.md with non-obvious commands, gotchas, branch/PR conventions, required env setup, testing quirks. "
+        "Do NOT include obvious instructions (error messages / unit tests / no secrets). Use the Write tool to create CLAUDE.md."
+    )
+    return '__AS_PROMPT__:' + _p
+
+# --- /doctor: doctor (诊断安装/设置) ---
+def _doctor():
+    import json as _j, os as _os, sys as _sys
+    _a = globals().get('Coder')
+    try:
+        _mc = _j.loads(_mcp_load_config())
+    except Exception:
+        _mc = {}
+    _st = globals().get('_CCPORT_RULES', {})
+    _lines = ['Doctor:']
+    _lines.append('  model: %s' % (_a.model if _a else '(none)'))
+    _lines.append('  cwd: %s' % _os.getcwd())
+    _lines.append('  secrets.nxs: %s' % ('found' if _os.path.isfile('secrets.nxs') else 'MISSING'))
+    _lines.append('  .claude/settings.local.json: %s' % ('found' if _os.path.isfile('.claude/settings.local.json') else 'none'))
+    _lines.append('  MCP servers configured: %d %s' % (len(_mc), list(_mc.keys())))
+    _lines.append('  permission rules: allow=%d deny=%d ask=%d' % (len(_st.get('allow', [])), len(_st.get('deny', [])), len(_st.get('ask', []))))
+    _lines.append('  permission mode: %s' % globals().get('_CCPORT_MODE', 'default'))
+    _lines.append('  python: %s' % _sys.version.split()[0])
+    _lines.append('  agent messages: %d' % (len(_a.messages) if _a else 0))
+    return chr(10).join(_lines)
+
+# --- /add-dir <path>: add-dir (添加工作目录) ---
+def _add_dir():
+    if not _args:
+        return 'Usage: /add-dir <path>'
+    import os as _os
+    _ap = _os.path.abspath(_args.split()[0])
+    _d = globals().setdefault('_CCPORT_ADD_DIRS', [])
+    if _ap not in _d:
+        _d.append(_ap)
+    return 'Added working directory: %s (total: %d)' % (_ap, len(_d))
+
+# --- /memory: memory (列出 CLAUDE.md 层级 memory 文件) ---
+def _memory():
+    import os as _os
+    _home = _os.path.expanduser('~')
+    _files = [
+        (_os.path.join(_home, '.claude', 'CLAUDE.md'), 'user (global)'),
+        (_os.path.join(_os.getcwd(), 'CLAUDE.md'), 'project'),
+        (_os.path.join(_os.getcwd(), '.claude', 'CLAUDE.md'), 'project (.claude/)'),
+    ]
+    _lines = ['Memory files (CLAUDE.md hierarchy):']
+    for _p, _tag in _files:
+        _ex = 'exists' if _os.path.isfile(_p) else 'missing'
+        _lines.append('  [%s] %s — %s' % (_tag, _p, _ex))
+    _lines.append('Edit with your $EDITOR or the Edit tool.')
+    return chr(10).join(_lines)
+
+# --- /permissions: permissions (显示 allow/deny 规则 + mode) ---
+def _permissions():
+    _st = globals().get('_CCPORT_RULES', {'allow': [], 'deny': [], 'ask': []})
+    _lines = ['Permission rules (mode=%s):' % globals().get('_CCPORT_MODE', 'default')]
+    _lines.append('  allow: %s' % _st.get('allow', []))
+    _lines.append('  deny:  %s' % _st.get('deny', []))
+    _lines.append('  ask:   %s' % _st.get('ask', []))
+    _lines.append('Configure via .claude/settings.local.json permissions.{allow,deny,ask}; mode via set_permission_mode (default/plan/bypass/auto).')
+    return chr(10).join(_lines)
+
+# --- /agents: agents (列出已配置 agent) ---
+def _agents():
+    _a = globals().get('Coder')
+    _lines = ['Agents:']
+    _lines.append('  Coder (main, model=%s, tools=14)' % (_a.model if _a else '?'))
+    _lines.append('  Built-in subagent types (Agent tool):')
+    _lines.append('    general-purpose — all tools, isolated context')
+    _lines.append('    explore — read-only (Read/Glob/Grep)')
+    _lines.append('  (CC also has: plan, verification, claude-code-guide, statusline-setup — not all ported)')
+    return chr(10).join(_lines)
+
+# --- /mcp: mcp (显示已配置 MCP server) ---
+def _mcp():
+    import json as _j
+    try:
+        _mc = _j.loads(_mcp_load_config())
+    except Exception:
+        _mc = {}
+    if not _mc:
+        return 'MCP: no servers configured (.mcp.json mcpServers empty/missing). Add servers to .mcp.json.'
+    _lines = ['MCP servers (%d):' % len(_mc)]
+    for _n, _cfg in _mc.items():
+        _cmd = _cfg.get('command', '?') if isinstance(_cfg, dict) else '?'
+        _lines.append('  %s — command: %s' % (_n, _cmd))
+    _lines.append('Use MCPTool / ListMcpResources / ReadMcpResource to interact.')
+    return chr(10).join(_lines)
+
+# --- /copy: copy last assistant reply to clipboard ---
+def _copy():
+    import subprocess as _sp, sys as _sys
+    _a = _agent()
+    if not _a:
+        return 'No agent.'
+    _reply = ''
+    for _m in reversed(_a.messages):
+        if _m.get('role') == 'assistant':
+            _reply = str(_m.get('content', ''))
+            break
+    if not _reply:
+        return 'No assistant reply to copy.'
+    try:
+        if _sys.platform == 'win32':
+            _sp.run(['clip'], input=_reply, text=True, encoding='utf-8', errors='replace')
+        elif _sys.platform == 'darwin':
+            _sp.run(['pbcopy'], input=_reply, text=True)
+        else:
+            _sp.run(['xclip', '-selection', 'clipboard'], input=_reply, text=True)
+        return 'Copied %d chars to clipboard.' % len(_reply)
+    except Exception as _e:
+        return 'Copy failed: %s' % _e
+
+# --- /usage: detailed token stats ---
+def _usage():
+    _a = _agent()
+    _msgs = _a.messages if _a else []
+    _u = sum(len(str(m.get('content', ''))) for m in _msgs if m.get('role') == 'user')
+    _as = sum(len(str(m.get('content', ''))) for m in _msgs if m.get('role') == 'assistant')
+    _s = sum(len(str(m.get('content', ''))) for m in _msgs if m.get('role') == 'system')
+    _total = _u + _as + _s
+    _lines = ['Usage:',
+              '  Messages: %d (system=%d, user=%d, assistant=%d)' % (len(_msgs), 1 if _s else 0, sum(1 for m in _msgs if m.get('role')=='user'), sum(1 for m in _msgs if m.get('role')=='assistant')),
+              '  Est. tokens: %d (system=%d, user=%d, assistant=%d)' % (_total//4, _s//4, _u//4, _as//4),
+              '  Context window: ~%d%% of 200K' % min(100, (_total//4*100)//200000)]
+    return chr(10).join(_lines)
+
+# --- /export: export conversation to markdown ---
+def _export():
+    import os as _os, time as _t
+    _a = _agent()
+    if not _a:
+        return 'No agent.'
+    _lines = ['# Claude Code Conversation Export', '']
+    for _m in _a.messages:
+        _role = _m.get('role', '?')
+        _content = str(_m.get('content', ''))
+        if _role == 'system':
+            continue
+        _lines.append('## %s' % ('User' if _role == 'user' else 'Assistant'))
+        _lines.append('')
+        _lines.append(_content)
+        _lines.append('')
+    _fname = 'conversation-%d.md' % int(_t.time())
+    with open(_fname, 'w', encoding='utf-8') as _f:
+        _f.write(chr(10).join(_lines))
+    return 'Exported %d messages to %s' % (len(_a.messages), _fname)
+
+# --- /undo: restore last file snapshot ---
+def _undo():
+    _hist = globals().get('_CCPORT_FILE_HISTORY', {})
+    if not _hist:
+        return 'Nothing to undo (no file history snapshots).'
+    import os as _os, shutil as _shu
+    for _fp in reversed(list(_hist.keys())):
+        _stack = _hist[_fp]
+        if _stack:
+            _bak = _stack.pop()
+            if _os.path.isfile(_bak):
+                _shu.copy2(_bak, _fp)
+                return 'Undo: restored %s from snapshot.' % _fp
+    return 'No snapshots to restore.'
+
+# --- /review: git diff code review ---
+def _review():
+    import subprocess as _sp
+    try:
+        _diff = _sp.run(['git', 'diff'], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
+        _diff_text = (_diff.stdout or '').strip()
+    except Exception:
+        _diff_text = ''
+    if not _diff_text:
+        _diff = _sp.run(['git', 'diff', '--cached'], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
+        _diff_text = (_diff.stdout or '').strip()
+    if not _diff_text:
+        return 'No changes to review (git diff is empty).'
+    return 'Git diff (%d chars). Use the Agent tool to review:\n%s' % (len(_diff_text), _diff_text[:2000])
+
+# --- /share: share conversation ---
+def _share():
+    import os as _os, time as _t
+    _a = _agent()
+    if not _a:
+        return 'No agent.'
+    _lines = ['# Claude Code Conversation', '']
+    for _m in _a.messages:
+        _role = _m.get('role', '?')
+        if _role == 'system':
+            continue
+        _lines.append('## %s' % ('User' if _role == 'user' else 'Assistant'))
+        _lines.append('')
+        _lines.append(str(_m.get('content', '')))
+        _lines.append('')
+    _fname = 'shared-session-%d.md' % int(_t.time())
+    with open(_fname, 'w', encoding='utf-8') as _f:
+        _f.write(chr(10).join(_lines))
+    return 'Shared session saved to %s (%d messages)' % (_fname, len(_a.messages))
+
+# --- /git command family ---
+def _git():
+    import subprocess as _sp
+    _sub = (_args or '').strip().split()
+    _cmd = _sub[0] if _sub else 'status'
+    _rest = _sub[1:] if len(_sub) > 1 else []
+    _git_map = {
+        'status': ['status', '--short'],
+        'log': ['log', '--oneline', '--graph', '-n', '15'],
+        'branch': ['branch', '-a'],
+        'blame': ['blame'] + _rest,
+        'stash': ['stash', 'list'] if not _rest else (['stash'] + _rest),
+        'diff': ['diff'],
+        'show': ['show'] + _rest,
+        'cherry-pick': ['cherry-pick'] + _rest,
+        'merge': ['merge'] + _rest,
+        'push': ['push'] + _rest,
+        'pull': ['pull'] + _rest,
+        'commit': ['commit'] + _rest,
+    }
+    _args_list = _git_map.get(_cmd, ['status', '--short'])
+    try:
+        _p = _sp.run(['git'] + _args_list, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
+        _out = (_p.stdout or '').strip()
+        if not _out:
+            _out = '(%s: no output, exit %d)' % (_cmd, _p.returncode)
+        return _out
+    except Exception as _e:
+        return 'git %s failed: %s' % (_cmd, _e)
+
+# --- /mcp add/remove/list enhancement ---
+def _mcp_manage():
+    import json as _j, os as _os
+    _sub = (_args or '').strip().split(None, 2)
+    _cfg_path = _os.path.join(_os.getcwd(), '.mcp.json')
+    _cfg = {}
+    if _os.path.isfile(_cfg_path):
+        try:
+            with open(_cfg_path, 'r') as _f:
+                _cfg = _j.load(_f) or {}
+        except Exception:
+            pass
+    _servers = _cfg.get('mcpServers', {})
+    if not _sub or _sub[0] == 'list':
+        if not _servers:
+            return 'MCP: no servers configured.'
+        _lines = ['MCP servers (%d):' % len(_servers)]
+        for _n, _c in _servers.items():
+            _lines.append('  %s — %s' % (_n, _c.get('command', '?') if isinstance(_c, dict) else '?'))
+        return chr(10).join(_lines)
+    if _sub[0] == 'add' and len(_sub) >= 3:
+        _name, _cmd_str = _sub[1], _sub[2]
+        _parts = _cmd_str.split()
+        _servers[_name] = {'command': _parts[0], 'args': _parts[1:] if len(_parts) > 1 else []}
+        _cfg['mcpServers'] = _servers
+        with open(_cfg_path, 'w') as _f:
+            _j.dump(_cfg, _f, indent=2)
+        return 'Added MCP server: %s (%s)' % (_name, _cmd_str)
+    if _sub[0] == 'remove' and len(_sub) >= 2:
+        _name = _sub[1]
+        if _name in _servers:
+            del _servers[_name]
+            _cfg['mcpServers'] = _servers
+            with open(_cfg_path, 'w') as _f:
+                _j.dump(_cfg, _f, indent=2)
+            return 'Removed MCP server: %s' % _name
+        return 'Server not found: %s' % _name
+    return 'Usage: /mcp [list|add <name> <command>|remove <name>]'
+
+# --- /pr: create PR (git push + gh pr create) ---
+def _pr():
+    import subprocess as _sp
+    _title = _args or 'Auto PR from Nexa Claude Code'
+    try:
+        _p1 = _sp.run(['git', 'push'], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
+        if _p1.returncode != 0:
+            return 'git push failed: %s' % (_p1.stderr or _p1.stdout)[:200]
+        _p2 = _sp.run(['gh', 'pr', 'create', '--title', _title, '--body', 'Created from Nexa Claude Code'],
+                      capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
+        if _p2.returncode == 0:
+            return 'PR created: %s' % (_p2.stdout or '').strip()
+        return 'gh pr create failed (is gh installed?): %s' % (_p2.stderr or '')[:200]
+    except Exception as _e:
+        return '/pr failed: %s' % _e
+
+# --- /login: API key validation + provider info ---
+def _login():
+    import os as _os
+    _a = _agent()
+    _lines = ['Login / API Configuration:',
+              '  Current model: %s' % (_a.model if _a else '?'),
+              '  Provider: GLM (open.bigmodel.cn coding endpoint)',
+              '  Switch: edit secrets.nxs BASE_URL + API_KEY + MODEL_NAME',
+              '  Supported: GLM / OpenAI-compatible / DeepSeek / Anthropic']
+    return chr(10).join(_lines)
+
+_DISPATCH = {
+    'help': _help, 'clear': _clear, 'compact': _compact, 'model': _model,
+    'cost': _usage, 'usage': _usage, 'stats': _usage, 'status': _status,
+    'context': _context, 'config': _config, 'vim': _vim, 'fast': _fast,
+    'rewind': _rewind, 'resume': _resume, 'exit': _exit, 'quit': _exit,
+    'init': _init, 'doctor': _doctor, 'add-dir': _add_dir, 'memory': _memory,
+    'permissions': _permissions, 'agents': _agents,
+    'copy': _copy, 'export': _export,
+    'undo': _undo, 'review': _review, 'share': _share, 'git': _git,
+    'mcp': _mcp_manage, 'pr': _pr, 'login': _login,
+}
+_handler = _DISPATCH.get(_name)
+if _handler is None:
+    return 'Unknown command: /%s. Type /help for available commands.' % _name
+return _handler()
+"""
+}

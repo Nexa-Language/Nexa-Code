@@ -1,0 +1,69 @@
+// =============================================================================
+// agent.nx — Agent 工具（忠实移植 AgentTool，子 agent / Task）
+// -----------------------------------------------------------------------------
+// Ported from (唯一翻译源 refs/claude-code-ts):
+//   packages/builtin-tools/src/tools/AgentTool/
+//     - constants.ts:1-2            → 工具名 'Agent' (legacy 'Task')；VERIFICATION_AGENT_TYPE
+//     - prompt.ts (getToolsDescription/formatAgentLine) → 子 agent 工具描述
+//     - builtInAgents.ts + built-in/ → 内置 agent(Explore/Plan/GeneralPurpose/...)
+//     - AgentTool.tsx (call) + runAgent.ts → 子 agent 执行（隔离上下文 + 查询循环）
+//   src/constants/prompts.ts:713    → DEFAULT_AGENT_PROMPT（子 agent 默认人格）
+// 忠实度：partial→full(核心)：subagent_type/prompt/description → 创建隔离上下文的子
+//   NexaAgent（fresh messages）→ .run(prompt)（turn 循环映射 NexaAgent.run，**不手写循环**，
+//   对齐 Phase 1 query_mapping）→ 返回子 agent 报告。
+//   子 agent 工具集按 subagent_type：general-purpose=全部；Explore=只读(Read/Glob/Grep)；
+//   其余/默认=general-purpose。fork/SendMessage 续跑/coordinator/memory 等平台特性未含(partial)。
+//   子 agent 的工具调用同样经 execute_tool→PreToolUse 钩子（权限沿用）。
+// python! 用单 \n（真换行）。
+// =============================================================================
+
+@tool("Launch a sub-agent with an isolated context to handle a sub-task. subagent_type: general-purpose (default, all tools) or explore (read-only: Read/Glob/Grep). prompt: the task for the sub-agent. description: a 3-5 word summary. The sub-agent runs to completion and returns a concise report; the caller relays it. Use for parallelizable independent work or to protect the main context from large outputs.")
+fn Agent(subagent_type: string, prompt: string, description: string): string {
+    python! """
+import sys
+
+# DEFAULT_AGENT_PROMPT (prompts.ts:713) — 子 agent 默认人格（双引号串，撇号免转义）
+_DEFAULT_AGENT_PROMPT = (
+    "You are an agent for Claude Code, Anthropic's official CLI for Claude. "
+    "Given the user's message, you should use the tools available to complete the task. "
+    "Complete the task fully—don't gold-plate, but don't leave it half-done. "
+    "When you complete the task, respond with a concise report covering what was done and any key findings "
+    "— the caller will relay this to the user, so it only needs the essentials."
+)
+
+# 工具集按 subagent_type (getToolsDescription / built-in agents)
+_stype = (subagent_type or 'general-purpose').strip()
+if _stype == '':
+    _stype = 'general-purpose'
+
+if _stype.lower() in ('explore', 'plan'):
+    # Explore/Plan: 只读 (Read/Glob/Grep) — 传 schema 字典（NexaAgent.tools 期望 schema，执行经 LOCAL_TOOLS）
+    _tools = [__tool_Read_schema, __tool_Glob_schema, __tool_Grep_schema]
+    _aprompt = ('You are a software engineering agent focused on exploration and research. '
+                'Use Read, Glob, and Grep to investigate the codebase and answer questions. '
+                'Do not modify files. Provide a thorough, accurate report of your findings.')
+else:
+    # general-purpose: 全工具（与父 agent 一致）
+    _tools = [__tool_Read_schema, __tool_Edit_schema, __tool_Write_schema, __tool_Bash_schema, __tool_Glob_schema, __tool_Grep_schema, __tool_NotebookEdit_schema]
+    _aprompt = _DEFAULT_AGENT_PROMPT
+
+_task = prompt or ''
+if not _task:
+    return 'Agent error: prompt is required.'
+
+try:
+    from src.runtime.agent import NexaAgent as _NA
+    # 隔离上下文：fresh NexaAgent（独立 messages）— 对齐 runAgent.ts 隔离语义
+    _sub = _NA(
+        name='sub-%s' % _stype,
+        prompt=_aprompt,
+        model=Coder.model,  # M6 Fix: 继承父 agent 当前模型（不再硬编码）
+        tools=_tools,
+    )
+    # turn 循环映射到 NexaAgent.run（不手写循环）
+    _report = _sub.run(_task)
+    return _report if _report else '(sub-agent returned no output)'
+except Exception as _e:
+    return 'Agent error: %s' % _e
+"""
+}

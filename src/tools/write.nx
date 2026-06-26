@@ -1,0 +1,74 @@
+// =============================================================================
+// write.nx — Write 工具（忠实移植 FileWriteTool）
+// -----------------------------------------------------------------------------
+// Ported from (唯一翻译源 refs/claude-code-ts):
+//   packages/builtin-tools/src/tools/FileWriteTool/
+//     - prompt.ts:3-4,6-17        → 工具名 'Write' / DESCRIPTION / 必须 Read 现有文件
+//     - FileWriteTool.ts:53-61    → inputSchema (file_path / content)
+//     - FileWriteTool.ts:150-211  → validateInput: 现有文件必须 Read 且未改动（staleness）
+//     - FileWriteTool.ts:213-260  → call: expandPath / mkdir 父目录 / writeTextContent
+// 忠实度：full（新建直接写 / 现有文件必须 Read + 未改动 "unexpectedly modified" /
+//   父目录 mkdir / 覆盖写）。readFileState 经 globals()['_CCPORT_READ_STATE'] 共享。
+// python! 用单 \n（真换行）。
+// =============================================================================
+
+@tool("Write a file to the local filesystem. This tool will overwrite the existing file if there is one at the provided path. If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first. Prefer the Edit tool for modifying existing files — it only sends the diff. Only use this tool to create new files or for complete rewrites.")
+fn Write(file_path: string, content: string): string {
+    python! """
+import os
+
+fp = (file_path or '').strip()
+if globals().get('_CCPORT_MODE', 'default') == 'plan':
+    return '[Permission] Write is not allowed in plan mode (read-only).'
+full = os.path.abspath(fp)
+
+_st = globals().setdefault('_CCPORT_READ_STATE', {})
+file_exists = os.path.isfile(full)
+
+# FileWriteTool.ts:195-211 — 现有文件必须 Read 且未改动
+if file_exists:
+    _last = _st.get(full)
+    if not _last:
+        return 'You must use your Read tool at least once in the conversation before writing to this file. This tool will fail if you did not read the file first.'
+    _mtime = os.path.getmtime(full)
+    if _mtime > _last.get('mtime', 0):
+        _is_full = (_last.get('offset') in (1, 0, None)) and (_last.get('limit') is None)
+        with open(full, 'r', encoding='utf-8', errors='replace') as _f:
+            _cur = _f.read()
+        if not (_is_full and _cur == _last.get('content')):
+            return 'File has been unexpectedly modified. Read it again before attempting to write it.'
+
+# FileWriteTool.ts:414 等 — mkdir 父目录
+_d = os.path.dirname(full)
+if _d:
+    os.makedirs(_d, exist_ok=True)
+
+# writeTextContent — 覆盖写
+with open(full, 'w', encoding='utf-8') as _f:
+    _f.write(content)
+
+# 记录 state
+_st[full] = {'mtime': os.path.getmtime(full), 'offset': 1, 'limit': None, 'content': content}
+
+_action = 'Updated existing file' if file_exists else 'Created new file'
+# Track 2 P0: auto-commit + diff preview after write
+_extra = ''
+_cfg = globals().get('_CCPORT_GLOBAL_CONFIG', {})
+if _cfg.get('auto_commit'):
+    try:
+        import subprocess as _sp2
+        _sp2.run(['git', 'add', full], capture_output=True, timeout=10)
+        _sp2.run(['git', 'commit', '-m', 'auto: write %s' % file_path], capture_output=True, timeout=10)
+        _extra = _extra + '\n[auto-committed]'
+    except Exception:
+        pass
+try:
+    import subprocess as _sp3
+    _diff = _sp3.run(['git', 'diff', full], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=10)
+    if _diff.stdout and _diff.stdout.strip():
+        _extra = _extra + '\n```diff\n' + _diff.stdout.strip()[:500] + '\n```'
+except Exception:
+    pass
+return '%s: %s (%d chars)%s' % (_action, file_path, len(content), _extra)
+"""
+}

@@ -1,0 +1,39 @@
+// config_tool.nx — ConfigTool（运行时读写 settings.json）
+// Ported from ConfigTool/ schema: action=get|set|list, key, value.
+@tool("Read or write settings.json configuration. action: get (read a key), set (write a key=value), or list (show all). key: the setting key (e.g. model, permissions, env). value: JSON value for set action. Modifies .claude/settings.local.json.")
+fn Config(action: string, key: string, value: string): string {
+    python! """
+import os, json
+_act = (action or 'list').strip().lower()
+_path = os.path.join(os.getcwd(), '.claude', 'settings.local.json')
+_data = {}
+if os.path.isfile(_path):
+    try:
+        with open(_path, 'r', encoding='utf-8') as _f:
+            _data = json.load(_f) or {}
+    except Exception:
+        _data = {}
+if _act == 'list':
+    return json.dumps(_data, ensure_ascii=False, indent=2) or '{}'
+if _act == 'get':
+    _k = (key or '').strip()
+    if not _k:
+        return 'key required for get'
+    _v = _data.get(_k)
+    return json.dumps(_v, ensure_ascii=False) if _v is not None else '(not set)'
+if _act == 'set':
+    _k = (key or '').strip()
+    if not _k:
+        return 'key required for set'
+    try:
+        _v = json.loads(value) if value else None
+    except Exception:
+        _v = value
+    _data[_k] = _v
+    os.makedirs(os.path.dirname(_path), exist_ok=True)
+    with open(_path, 'w', encoding='utf-8') as _f:
+        json.dump(_data, _f, ensure_ascii=False, indent=2)
+    return 'Set %s = %s' % (_k, json.dumps(_v, ensure_ascii=False))
+return 'Unknown action: %s (use get/set/list)' % _act
+"""
+}

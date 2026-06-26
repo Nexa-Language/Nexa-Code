@@ -1,0 +1,94 @@
+// =============================================================================
+// bash.nx — Bash 工具（忠实移植 BashTool）
+// -----------------------------------------------------------------------------
+// Ported from (唯一翻译源 refs/claude-code-ts):
+//   packages/builtin-tools/src/tools/BashTool/
+//     - prompt.ts:31-33,333        → getMaxTimeoutMs/getDefaultTimeoutMs 引用
+//     - BashTool.tsx:298-322       → inputSchema (command/timeout/run_in_background)
+//     - BashTool.tsx:397-419       → output schema (stdout/stderr/interrupted/exitCode)
+//   src/utils/timeouts.ts:2-3      → DEFAULT_TIMEOUT_MS=120000 / MAX_TIMEOUT_MS=600000
+//   src/utils/shell/outputLimits.ts:3-4 → BASH_MAX_OUTPUT_DEFAULT=30000 / UPPER=150000
+//   BashTool/utils.ts:133-163      → formatOutput: 超 maxOutputLength 截断 + "... [N lines truncated] ..."
+// 忠实度：partial→full(执行核心)：command 执行 / timeout(默认120s,clamp≤600s) / stdout+stderr
+//   捕获 / 输出截断(30000字+"... [N lines truncated] ...") / exit code。
+//   run_in_background=true：partial——真异步后台任务子系统未移植，仍同步执行并注明。
+//   shell：用 which('bash') 取 PATH 里的 bash（git-bash/WSL 均可），以 [bash,-c,cmd] 执行。
+// python! 用单 \n（真换行）。
+// =============================================================================
+
+@tool("Executes a bash command. You may specify an optional timeout in milliseconds (up to 600000ms / 10 minutes). By default, your command will timeout after 120000ms (2 minutes).")
+fn Bash(command: string, timeout: number, run_in_background: boolean): string {
+    python! """
+import os
+import shutil
+import subprocess
+
+DEFAULT_TIMEOUT_MS = 120000   # timeouts.ts:2
+MAX_TIMEOUT_MS = 600000       # timeouts.ts:3
+MAX_OUTPUT_LENGTH = 30000     # outputLimits.ts BASH_MAX_OUTPUT_DEFAULT
+
+_cmd = command or ''
+
+# H3 权限守卫：plan 模式下直接调用也拒（不只靠 PreToolUse hook）
+_mode = globals().get('_CCPORT_MODE', 'default')
+if _mode == 'plan':
+    return '[Permission] Bash is not allowed in plan mode (read-only).'
+
+_to = int(timeout) if timeout else DEFAULT_TIMEOUT_MS
+if _to <= 0:
+    _to = DEFAULT_TIMEOUT_MS
+if _to > MAX_TIMEOUT_MS:
+    _to = MAX_TIMEOUT_MS
+_to_sec = _to / 1000.0
+
+# H1 Fix: Windows 下不依赖 shutil.which('bash')（可能解析到 WSL bash，无法操作 D:\ 路径）
+# Windows 用 shell=True（cmd.exe + PATH 里的 git-bash 工具），原生支持 Windows 路径
+import sys as _sys
+if _sys.platform == 'win32':
+    def _run_cmd(_c, _t):
+        return subprocess.run(_c, shell=True, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=_t)
+else:
+    _bash = shutil.which('bash')
+    def _run_cmd(_c, _t):
+        if _bash:
+            return subprocess.run([_bash, '-c', _c], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=_t)
+        return subprocess.run(_c, shell=True, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=_t)
+
+try:
+    _proc = _run_cmd(_cmd, _to_sec)
+    _stdout = _proc.stdout or ''
+    _stderr = _proc.stderr or ''
+    _code = _proc.returncode
+except subprocess.TimeoutExpired as _e:
+    _stdout = (_e.stdout or '')
+    if isinstance(_stdout, bytes):
+        _stdout = _stdout.decode('utf-8', 'replace')
+    _stderr = (_e.stderr or '')
+    if isinstance(_stderr, bytes):
+        _stderr = _stderr.decode('utf-8', 'replace')
+    _stderr = (_stderr + ('\n' if _stderr else '') + 'Command timed out after %d ms' % _to)
+    _code = 124
+
+# formatOutput: 截断超长输出 (BashTool/utils.ts:147-162)
+def _fmt(_content):
+    if len(_content) <= MAX_OUTPUT_LENGTH:
+        return _content
+    _part = _content[:MAX_OUTPUT_LENGTH]
+    _remaining_lines = _content[MAX_OUTPUT_LENGTH:].count('\n') + 1
+    return '%s\n\n... [%d lines truncated] ...' % (_part, _remaining_lines)
+
+_out = _fmt(_stdout)
+_err = _fmt(_stderr)
+
+_parts = []
+if _out:
+    _parts.append(_out)
+if _err:
+    _parts.append('[stderr]\n' + _err)
+if not _out and not _err:
+    _parts.append('(no output)')
+_result = '\n'.join(_parts)
+# run_in_background=true 当前同步执行（异步后台子系统未移植）；不在 agent 可见输出里加 note（避免泄漏/干扰）
+return '%s\n[exit code: %d]' % (_result, _code)
+"""
+}

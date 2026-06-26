@@ -1,0 +1,127 @@
+// =============================================================================
+// edit.nx — Edit 工具（忠实移植 FileEditTool）
+// -----------------------------------------------------------------------------
+// Ported from (唯一翻译源 refs/claude-code-ts):
+//   packages/builtin-tools/src/tools/FileEditTool/
+//     - constants.ts:2,10-11       → 工具名 'Edit' / FILE_UNEXPECTEDLY_MODIFIED_ERROR
+//     - prompt.ts:4-28             → 描述（exact string replace / 必须 Read / old_string 唯一 / replace_all）
+//     - types.ts:6-19              → inputSchema (file_path/old_string/new_string/replace_all)
+//     - FileEditTool.ts:134-345    → canUseTool 校验（同串/空串/匹配数/未读）
+//     - FileEditTool.ts:371-465    → call: expandPath / mkdir / readFileForEdit /
+//                                     staleness(mtime) / findActualString / getPatchForEdit(count/replace)
+//   src/utils/file.js (readFileForEdit/findActualString) — 行尾归一化匹配
+// 忠实度：full（exact 替换 / replace_all / old_string 唯一性 / 必须 Read / staleness
+//   "unexpectedly modified" / 空 old_string 建新文件 / 同串拒绝）。readFileState 经
+//   globals()['_CCPORT_READ_STATE'] 跨工具共享（Read 记录 mtime+offset+limit+content）。
+//   CRLF→LF 归一化用真实 \r\n/\n（单反斜杠，运行期为真 CR/LF）。
+// python! 用单 \n（真换行）。
+// =============================================================================
+
+@tool("Performs exact string replacements in files. You must use your Read tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the file. The edit will fail if old_string is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use replace_all to change every instance of old_string.")
+fn Edit(file_path: string, old_string: string, new_string: string, replace_all: boolean): string {
+    python! """
+import os
+
+fp = (file_path or '').strip()
+if globals().get('_CCPORT_MODE', 'default') == 'plan':
+    return '[Permission] Edit is not allowed in plan mode (read-only).'
+full = os.path.abspath(fp)
+_ra = bool(replace_all) if replace_all else False
+
+# FileEditTool.ts:144-149 — 同串拒绝
+if old_string == new_string:
+    return 'No changes to make: old_string and new_string are exactly the same.'
+
+_d = os.path.dirname(full)
+if _d:
+    os.makedirs(_d, exist_ok=True)
+
+_st = globals().setdefault('_CCPORT_READ_STATE', {})
+file_exists = os.path.isfile(full)
+
+if not file_exists:
+    if old_string == '':
+        with open(full, 'w', encoding='utf-8') as _f:
+            _f.write(new_string)
+        _st[full] = {'mtime': os.path.getmtime(full), 'offset': 1, 'limit': None, 'content': new_string}
+        return 'Created new file: %s' % file_path
+    return 'String to replace not found in file.\nString: %s' % old_string
+
+with open(full, 'r', encoding='utf-8', errors='replace') as _f:
+    content = _f.read()
+
+# FileEditTool.ts:435-452 — staleness：必须 Read 且未被改动
+_last = _st.get(full)
+if not _last:
+    return 'You must use your Read tool at least once in the conversation before editing this file. This tool will error if you attempt an edit without reading it.'
+_mtime = os.path.getmtime(full)
+if _mtime > _last.get('mtime', 0):
+    _is_full = (_last.get('offset') in (1, 0, None)) and (_last.get('limit') is None)
+    if not (_is_full and content == _last.get('content')):
+        return 'File has been unexpectedly modified. Read it again before attempting to write it.'
+
+# FileEditTool.ts:244-263 — 空 old_string 仅对空文件合法
+if old_string == '':
+    if content == '':
+        with open(full, 'w', encoding='utf-8') as _f:
+            _f.write(new_string)
+        _st[full] = {'mtime': os.path.getmtime(full), 'offset': 1, 'limit': None, 'content': new_string}
+        return 'Wrote content to empty file: %s' % file_path
+    return 'old_string is empty but the file is not empty. Provide old_string to replace specific text, or use Write to replace the whole file.'
+
+# findActualString: 行尾归一化匹配 (真实 CRLF->LF，单反斜杠 \r\n/\n)
+_actual = old_string
+if _actual not in content:
+    _norm = content.replace('\r\n', '\n')
+    if _actual in _norm:
+        content = _norm
+
+# FileEditTool.ts:300-321 — 计数与唯一性
+_matches = content.count(_actual)
+if _matches == 0:
+    return 'String to replace not found in file.\nString: %s' % old_string
+if _matches > 1 and not _ra:
+    return ('Found %d matches of the string to replace, but replace_all is false. '
+            'To replace all occurrences, set replace_all to true. To replace only one occurrence, '
+            'please provide more context to uniquely identify the instance.\nString: %s') % (_matches, old_string)
+
+# FileEditTool.ts:335-337 — replace_all ? replaceAll : replace(first)
+if _ra:
+    new_content = content.replace(_actual, new_string)
+else:
+    new_content = content.replace(_actual, new_string, 1)
+
+with open(full, 'w', encoding='utf-8') as _f:
+    _f.write(new_content)
+
+_st[full] = {'mtime': os.path.getmtime(full), 'offset': 1, 'limit': None, 'content': new_content}
+
+# 渲染改动区域片段（CC UI 显示 diff；此处返回改动上下文）
+_idx = new_content.find(new_string)
+_lines = new_content.split('\n')
+_pos = new_content[:_idx].count('\n') if _idx >= 0 else 0
+_lo = max(0, _pos - 3)
+_hi = min(len(_lines), _pos + new_string.count('\n') + 4)
+_snip = '\n'.join('%s%s' % (str(_n).rjust(6), _lines[_n]) for _n in range(_lo, _hi))
+_occ = 'all %d occurrences' % _matches if _ra else '1 occurrence'
+# Track 2 P0: auto-commit + diff preview after edit
+_extra = ''
+_cfg = globals().get('_CCPORT_GLOBAL_CONFIG', {})
+if _cfg.get('auto_commit'):
+    try:
+        import subprocess as _sp2
+        _sp2.run(['git', 'add', full], capture_output=True, timeout=10)
+        _sp2.run(['git', 'commit', '-m', 'auto: edit %s' % file_path], capture_output=True, timeout=10)
+        _extra = _extra + '\n[auto-committed]'
+    except Exception:
+        pass
+try:
+    import subprocess as _sp3
+    _diff = _sp3.run(['git', 'diff', full], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=10)
+    if _diff.stdout and _diff.stdout.strip():
+        _extra = _extra + '\n```diff\n' + _diff.stdout.strip()[:500] + '\n```'
+except Exception:
+    pass
+return 'The file %s has been updated (%s):\n%s%s' % (file_path, _occ, _snip, _extra)
+"""
+}

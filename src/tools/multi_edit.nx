@@ -1,0 +1,54 @@
+// multi_edit.nx — MultiEdit 工具（一次多个 old→new 替换）
+// Ported from CC pattern (FileEditTool extended for array of edits).
+// params: file_path + edits JSON array of {old_string, new_string}. Each edit uniqueness-checked.
+// 忠实度：full（多编辑原子性——任一失败则全部不执行；每编辑唯一性检查；必须先 Read）。
+// python! 单 \n。
+@tool("Performs multiple exact string replacements in a single file in one atomic operation. file_path: the file to edit. edits: JSON array of objects, each with old_string and new_string. All edits must be unique; if any fails, none are applied. You must Read the file first.")
+fn MultiEdit(file_path: string, edits: string): string {
+    python! """
+import os, json
+fp = (file_path or '').strip()
+if globals().get('_CCPORT_MODE', 'default') == 'plan':
+    return '[Permission] MultiEdit is not allowed in plan mode (read-only).'
+full = os.path.abspath(fp)
+try:
+    _edits = json.loads(edits) if isinstance(edits, str) else edits
+except Exception as _e:
+    return 'Invalid edits JSON: %s' % _e
+if not isinstance(_edits, list) or not _edits:
+    return 'edits must be a non-empty JSON array of {old_string, new_string}.'
+_st = globals().setdefault('_CCPORT_READ_STATE', {})
+if not os.path.isfile(full):
+    return 'File does not exist: %s' % file_path
+_last = _st.get(full)
+if not _last:
+    return 'You must use your Read tool at least once before editing this file.'
+_mtime = os.path.getmtime(full)
+if _mtime > _last.get('mtime', 0):
+    _is_full = (_last.get('offset') in (1, 0, None)) and (_last.get('limit') is None)
+    with open(full, 'r', encoding='utf-8', errors='replace') as _f:
+        _cur = _f.read()
+    if not (_is_full and _cur == _last.get('content')):
+        return 'File has been unexpectedly modified. Read it again before attempting to write it.'
+with open(full, 'r', encoding='utf-8', errors='replace') as _f:
+    content = _f.read()
+# 原子性：先验证所有编辑，再应用
+for _i, _edit in enumerate(_edits):
+    _old = _edit.get('old_string', '')
+    _new = _edit.get('new_string', '')
+    if _old == _new:
+        return 'Edit %d: old_string and new_string are the same.' % (_i + 1)
+    if _old not in content:
+        return 'Edit %d: old_string not found in file.' % (_i + 1)
+    _count = content.count(_old)
+    if _count > 1:
+        return 'Edit %d: old_string is not unique (%d matches). Provide more context.' % (_i + 1, _count)
+# 全部验证通过 → 顺序应用
+for _edit in _edits:
+    content = content.replace(_edit['old_string'], _edit['new_string'], 1)
+with open(full, 'w', encoding='utf-8') as _f:
+    _f.write(content)
+_st[full] = {'mtime': os.path.getmtime(full), 'offset': 1, 'limit': None, 'content': content}
+return 'Successfully applied %d edit(s) to %s.' % (len(_edits), file_path)
+"""
+}

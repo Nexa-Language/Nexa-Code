@@ -1,0 +1,33 @@
+// ask_user.nx — AskUserQuestion 工具（向用户提问）
+// Ported from AskUserQuestionTool/prompt.ts schema: questions array of {question, options, header, multiSelect}.
+// std.ui 模式用 input()；JSON 事件模式 emit user_question_request + wait response。
+@tool("Ask the user a question. questions: JSON array of objects with question (string), options (array of {label, description}), header (string), and optional multiSelect (boolean). Returns the user answers. Use when you need clarification or user input to proceed.")
+fn AskUserQuestion(questions: string): string {
+    python! """
+import json
+try:
+    _qs = json.loads(questions) if isinstance(questions, str) else questions
+except Exception as _e:
+    return 'Invalid questions JSON: %s' % _e
+if not isinstance(_qs, list) or not _qs:
+    return 'questions must be a non-empty JSON array.'
+_answers = []
+for _qi, _q in enumerate(_qs):
+    _question = _q.get('question', '')
+    _header = _q.get('header', 'Question %d' % (_qi + 1))
+    _options = _q.get('options', [])
+    print()
+    print('[%s] %s' % (_header, _question))
+    for _oi, _opt in enumerate(_options):
+        _label = _opt.get('label', '') if isinstance(_opt, dict) else str(_opt)
+        _desc = _opt.get('description', '') if isinstance(_opt, dict) else ''
+        print('  %d. %s%s' % (_oi + 1, _label, ' — %s' % _desc if _desc else ''))
+    try:
+        _ans = input('Your choice (number or text): ').strip()
+    except EOFError:
+        _ans = ''
+    _answers.append({'header': _header, 'answer': _ans})
+import json as _j
+return _j.dumps(_answers, ensure_ascii=False)
+"""
+}

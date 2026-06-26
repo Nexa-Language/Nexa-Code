@@ -1,0 +1,69 @@
+// platform.nx — P1 工具：PushNotification + REPL + TerminalCapture
+// Ported from CC PushNotificationTool/ REPLTool/ TerminalCapture/ 模式。
+// python! 单 \n。
+
+@tool("Send a desktop notification. title: notification title. message: notification body. Works on Windows (toast/msg), macOS (osascript), Linux (notify-send).")
+fn PushNotification(title: string, message: string): string {
+    python! """
+import subprocess, sys
+_t = title or 'Claude Code'
+_m = message or 'Task completed.'
+try:
+    if sys.platform == 'win32':
+        subprocess.run(['msg', '*', '%s: %s' % (_t, _m)], timeout=10)
+    elif sys.platform == 'darwin':
+        subprocess.run(['osascript', '-e', 'display notification \"%s\" with title \"%s\"' % (_m, _t)], timeout=10)
+    else:
+        subprocess.run(['notify-send', _t, _m], timeout=10)
+    return 'Notification sent: %s — %s' % (_t, _m)
+except Exception as _e:
+    return 'Notification failed (non-critical): %s' % _e
+"""
+}
+
+@tool("Execute Python code and return stdout+stderr. code: Python code to execute. Useful for calculations, experiments, data processing. Each call is independent (no persistent state).")
+fn REPL(code: string): string {
+    python! """
+import subprocess, sys, tempfile, os
+_code = code or ''
+if not _code:
+    return 'REPL error: code is required.'
+_tf = tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8')
+_tf.write(_code)
+_tf.close()
+try:
+    _py = sys.executable
+    _p = subprocess.run([_py, _tf.name], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
+    _out = (_p.stdout or '').strip()
+    if _p.stderr:
+        _out = _out + ('\n[stderr]\n' if _out else '') + _p.stderr.strip()
+    return _out or '(no output, exit %d)' % _p.returncode
+except subprocess.TimeoutExpired:
+    return 'REPL timeout (30s).'
+except Exception as _e:
+    return 'REPL error: %s' % _e
+finally:
+    os.unlink(_tf.name)
+"""
+}
+
+@tool("Capture a screenshot of the terminal. Saves to a file. Platform-dependent: Windows (needs snipping tool), macOS (screencapture), Linux (import/scrot). Returns file path or error.")
+fn TerminalCapture(file_path: string): string {
+    python! """
+import subprocess, sys, os, time
+_fp = file_path or ('screenshot-%d.png' % int(time.time()))
+try:
+    if sys.platform == 'darwin':
+        subprocess.run(['screencapture', _fp], timeout=10)
+    elif sys.platform == 'win32':
+        # Windows: use PowerShell to call Snipping Tool API (simplified)
+        return 'TerminalCapture on Windows: use Win+Shift+S or Snipping Tool manually. (NAPI screenshot not ported.)'
+    else:
+        subprocess.run(['import', '-window', 'root', _fp], timeout=10)
+    if os.path.isfile(_fp):
+        return 'Screenshot saved: %s (%d bytes)' % (_fp, os.path.getsize(_fp))
+    return 'Screenshot command ran but file not found: %s' % _fp
+except Exception as _e:
+    return 'TerminalCapture failed: %s' % _e
+"""
+}

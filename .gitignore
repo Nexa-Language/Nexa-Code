@@ -1,0 +1,35 @@
+# Secrets
+secrets.nxs
+*.nxs
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Nexa 编译产物（从 .nx 生成，可重建）
+src/main.py
+
+# Node/UI
+ui-ink/node_modules/
+ui-ink/bun.lockb
+ui-ink/dist/
+
+# Codex/OMC artifacts
+.omx/
+.omc/
+
+# Test artifacts
+_test_*
+_test_*/
+_long_test*
+_perm_test*
+_winpath_test*
+shared-session-*
+conversation-*
+.ccnx-*
+.ccport-bak-*
+
+# OS
+.DS_Store
+Thumbs.db

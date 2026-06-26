@@ -1,0 +1,230 @@
+// =============================================================================
+// context.nx — 真上下文组装（Phase 1b）
+// -----------------------------------------------------------------------------
+// Ported from (唯一翻译源 refs/claude-code-ts):
+//   - src/context.ts:36-111   → getGitStatus (git 快照)
+//   - src/context.ts:116-150  → getSystemContext ({gitStatus})
+//   - src/context.ts:155-188  → getUserContext ({claudeMd, currentDate})
+//   - src/utils/claudemd.ts   → getClaudeMds (CLAUDE.md 层级发现，核心)
+//   - src/constants/prompts.ts:604-663  → computeSimpleEnvInfo ("# Environment")
+//   - src/constants/prompts.ts:687-711  → getShellInfoLine / getUnameSR
+//   - src/constants/common.ts → getLocalISODate (currentDate)
+// 忠实度：partial（git/user-context 逐字段对齐；CLAUDE.md 层级移植核心：user + project
+//   cwd-upward；managed(/etc) 与 .claude/rules/*.md 暂缓——见每函数备注）。
+//
+// CC 的注入模型：getSystemContext+getUserContext → 拼成【首条 user 消息】注入对话；
+//   computeSimpleEnvInfo → 系统 prompt 的动态 "# Environment" 段。Nexa 的 agent prompt
+//   在声明期是静态的（无法塞运行时 env），故本移植把 env+git+claudeMd+date 统一作为
+//   【首条 user 消息】注入（行为等价：turn-1 前这些上下文都到达模型）。这是 Nexa 静态
+//   prompt 约束下的忠实适配，登记 PORT_TRACE 为 partial。
+// 这些 @tool fn 不绑给 agent，在 flow 里直接当普通函数调用（不经 LLM）。
+// python! 用单 \n（真换行）。
+// =============================================================================
+
+// --- getGitStatus: context.ts:36-111 逐字段对齐 ---------------------------------
+// MAX_STATUS_CHARS=1000(context.ts:20)；非 git 仓库返回 null('')；truncation 文案逐字（含"2k characters"）。
+@tool("Assemble git status snapshot (context.ts getGitStatus) — branch/main/status(<=1000)/recent5/user.name")
+fn get_git_status(): string {
+    python! """
+import subprocess
+
+def _run(*args):
+    try:
+        p = subprocess.run(['git'] + list(args), capture_output=True, text=True, timeout=15)
+        return (p.stdout or '').strip()
+    except Exception:
+        return ''
+
+# isGit (context.ts:46 getIsGit)
+try:
+    _check = subprocess.run(['git', 'rev-parse', '--is-inside-work-tree'],
+                            capture_output=True, text=True, timeout=10)
+    if _check.returncode != 0 or _check.stdout.strip() != 'true':
+        return ''
+except Exception:
+    return ''
+
+branch = _run('branch', '--show-current')
+
+# getDefaultBranch(): origin/HEAD -> main -> master -> 'main'
+main_branch = ''
+_sym = _run('symbolic-ref', 'refs/remotes/origin/HEAD', '--short')
+if _sym.startswith('origin/'):
+    main_branch = _sym[len('origin/'):]
+if not main_branch:
+    main_branch = 'main' if _run('rev-parse', '--verify', '--quiet', 'refs/heads/main') else ('master' if _run('rev-parse', '--verify', '--quiet', 'refs/heads/master') else 'main')
+
+status = _run('--no-optional-locks', 'status', '--short')
+log = _run('--no-optional-locks', 'log', '--oneline', '-n', '5')
+user_name = _run('config', 'user.name')
+
+# context.ts:84-89 — truncation (1000) + literal "2k characters" 文案
+MAX_STATUS_CHARS = 1000
+if len(status) > MAX_STATUS_CHARS:
+    truncated_status = status[:MAX_STATUS_CHARS] + '\n... (truncated because it exceeds 2k characters. If you need more information, run "git status" using BashTool)'
+else:
+    truncated_status = status
+
+# context.ts:96-103 — 逐字段拼装，join('\n\n')
+parts = [
+    'This is the git status at the start of the conversation. Note that this status is a snapshot in time, and will not update during the conversation.',
+    f'Current branch: {branch}',
+    f'Main branch (you will usually use this for PRs): {main_branch}',
+]
+if user_name:
+    parts.append(f'Git user: {user_name}')
+parts.append(f'Status:\n{truncated_status or "(clean)"}')
+parts.append(f'Recent commits:\n{log}')
+return '\n\n'.join(parts)
+"""
+}
+
+// --- getUserContext.clauMd: claudemd.ts getClaudeMds 核心 -----------------------
+// 层级(context.ts 注释 claudemd.ts:1-16)：managed(/etc) -> user(~/.claude/CLAUDE.md)
+//   -> project(CLAUDE.md / .claude/CLAUDE.md / .claude/rules/*.md)。reverse priority：
+//   cwd 越近优先级越高（后加载）。本移植核心：user + project(cwd 向上 CLAUDE.md 与
+//   .claude/CLAUDE.md)。managed(/etc) 与 .claude/rules/*.md 暂缓（partial）。
+@tool("Discover CLAUDE.md hierarchy (claudemd.ts getClaudeMds core) — user + project cwd-upward")
+fn get_claude_md(): string {
+    python! """
+import os
+
+found = []  # 低优先级在前
+
+# User memory (~/.claude/CLAUDE.md) — claudemd.ts:5
+# 默认跳过全局 user CLAUDE.md：此处它常是宿主 CC 会话的编排层(如 oh-my-claudecode)，
+# 非 port agent 的项目配置；注入会污染 agent 自我认知(说"运行在 OMC 上"而非"Claude Code")。
+# 需要时设 NEXA_INCLUDE_GLOBAL_CLAUDE_MD=1 开启（对齐 CC 注入 user CLAUDE.md 的行为）。
+_home = os.path.expanduser('~')
+_user_md = os.path.join(_home, '.claude', 'CLAUDE.md')
+if os.environ.get('NEXA_INCLUDE_GLOBAL_CLAUDE_MD') and os.path.isfile(_user_md):
+    try:
+        with open(_user_md, 'r', encoding='utf-8', errors='replace') as _f:
+            _c = _f.read().strip()
+        if _c:
+            found.append(('user', _c))
+    except Exception:
+        pass
+
+# Project memory: cwd 向上到根，收 CLAUDE.md 与 .claude/CLAUDE.md — claudemd.ts:859-908
+# closer-to-cwd 优先级更高（后输出）。故按 根->cwd 顺序输出。
+_cwd = os.getcwd()
+_chain = []
+_d = _cwd
+while True:
+    _chain.append(_d)
+    _parent = os.path.dirname(_d)
+    if _parent == _d:
+        break
+    _d = _parent
+_chain.reverse()  # 根在前，cwd 在后
+
+for _dir in _chain:
+    for _rel in ('CLAUDE.md', os.path.join('.claude', 'CLAUDE.md')):
+        _p = os.path.join(_dir, _rel)
+        if os.path.isfile(_p):
+            try:
+                with open(_p, 'r', encoding='utf-8', errors='replace') as _f:
+                    _c = _f.read().strip()
+                if _c:
+                    found.append(('project:' + _p, _c))
+            except Exception:
+                pass
+
+if not found:
+    return ''
+# 低->高优先级拼接（managed/user 先，project 根->cwd 后）
+_blocks = []
+for _tag, _c in found:
+    _blocks.append(_c)
+return '\n\n---\n\n'.join(_blocks)
+"""
+}
+
+// --- getUserContext.currentDate: context.ts:186 + common.ts getLocalISODate -----
+@tool("Today's date (context.ts getUserContext.currentDate + common.ts getLocalISODate)")
+fn get_current_date(): string {
+    python! """
+import datetime
+return f"Today's date is {datetime.date.today().isoformat()}."
+"""
+}
+
+// --- computeSimpleEnvInfo: prompts.ts:604-663 ("# Environment" 段) --------------
+// 忠实移植环境事实行(cwd/isGit/platform/shell/OS/model)；Anthropic 产品行
+// (Claude model family IDs / "Claude Code is available as..." / "Fast mode") 系
+// CC 源中 !undercover 条件下的营销内容，本 GLM 运行时下代入会产生错误上下文，故
+// 省略并在此注明（partial，非发明）。
+@tool("Assemble environment info (prompts.ts computeSimpleEnvInfo core) — cwd/git/platform/shell/OS/model")
+fn get_env_info(model_id: string): string {
+    python! """
+import os
+import sys
+import platform
+import subprocess
+
+cwd = os.getcwd()
+try:
+    _chk = subprocess.run(['git', 'rev-parse', '--is-inside-work-tree'],
+                          capture_output=True, text=True, timeout=10)
+    is_git = 'Yes' if (_chk.returncode == 0 and _chk.stdout.strip() == 'true') else 'No'
+except Exception:
+    is_git = 'No'
+
+_pf = sys.platform
+_shell = os.environ.get('SHELL', 'unknown')
+if 'zsh' in _shell:
+    _shell_name = 'zsh'
+elif 'bash' in _shell:
+    _shell_name = 'bash'
+else:
+    _shell_name = _shell
+if _pf == 'win32':
+    shell_line = f'Shell: {_shell_name} (use Unix shell syntax, not Windows — e.g., /dev/null not NUL, forward slashes in paths)'
+else:
+    shell_line = f'Shell: {_shell_name}'
+
+if _pf == 'win32':
+    os_version = f'{platform.version()} {platform.release()}'
+else:
+    os_version = f'{platform.system()} {platform.release()}'
+
+model_desc = f'You are powered by the model {model_id}.'
+
+items = [
+    f'Primary working directory: {cwd}',
+    f'Is a git repository: {is_git}',
+    f'Platform: {_pf}',
+    shell_line,
+    f'OS Version: {os_version}',
+    model_desc,
+]
+lines = ['# Environment', 'You have been invoked in the following environment: ']
+for _it in items:
+    lines.append(f' - {_it}')
+return '\n'.join(lines)
+"""
+}
+
+// --- 组装 CC 首条 user 消息：getSystemContext({gitStatus}) + getUserContext({claudeMd,currentDate}) ---
+// context.ts:116-188 的两个 memoize 拼装；env_info(prompts.ts) 按 Phase 1 适配一并注入。
+// 顺序：env_info -> gitStatus -> claudeMd -> currentDate（空段跳过）。
+@tool("Assemble CC first-user-message context (context.ts getSystemContext+getUserContext)")
+fn build_user_context(model_id: string): string {
+    python! """
+_sections = []
+_env = get_env_info(model_id)
+if _env:
+    _sections.append(_env)
+_git = get_git_status()
+if _git:
+    _sections.append(_git)
+_md = get_claude_md()
+if _md:
+    _sections.append(_md)
+_date = get_current_date()
+if _date:
+    _sections.append(_date)
+return '\n\n'.join(_sections)
+"""
+}

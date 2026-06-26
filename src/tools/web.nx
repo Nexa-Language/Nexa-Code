@@ -1,0 +1,96 @@
+// =============================================================================
+// web.nx — Web 工具（忠实移植 WebFetchTool / WebSearchTool）
+// -----------------------------------------------------------------------------
+// Ported from (唯一翻译源 refs/claude-code-ts):
+//   packages/builtin-tools/src/tools/
+//     - WebFetchTool/prompt.ts:1-46 + WebFetchTool.ts:26-32 → url/prompt，HTTP→HTTPS，HTML→markdown，二级模型处理
+//     - WebSearchTool/prompt.ts + WebSearchTool.ts:15-45 → query/allowed_domains/blocked_domains，搜索+Sources
+// 忠实度：partial。
+//   WebFetch：full(抓取核心) — urllib 抓取 + HTTP→HTTPS + HTML 标签剥离 + 截断返回；二级模型
+//     「按 prompt 处理」部分对齐（CC 用小模型；此处返回剥离后文本由主 agent 处理，注明）。
+//   WebSearch：full(DDG 后端) — DuckDuckGo Instant Answer API（api.duckduckgo.com，免费无 key），
+//     返回 AbstractText + RelatedTopics。M8 Fix: 注释已从 "stub" 更新。
+// python! 用单 \n（真换行）；正则反引用/转义也用单反斜杠。
+// =============================================================================
+
+@tool("Fetch content from a URL and return it as text (HTML stripped to text). url: fully-formed URL (HTTP auto-upgraded to HTTPS). prompt: what you want to extract from the page (applied by the caller to the returned text). Read-only. Large content is truncated.")
+fn WebFetch(url: string, prompt: string): string {
+    python! """
+import re
+import urllib.request
+
+_u = (url or '').strip()
+if not _u:
+    return 'WebFetch error: url is required.'
+if _u.startswith('http://'):
+    _u = 'https://' + _u[len('http://'):]
+if not _u.startswith('https://'):
+    return 'WebFetch error: url must be a valid http(s) URL.'
+
+_req = urllib.request.Request(_u, headers={'User-Agent': 'Mozilla/5.0 (compatible; nexa-ccport)'})
+try:
+    with urllib.request.urlopen(_req, timeout=20) as _r:
+        _final = _r.geturl()
+        _raw = _r.read(2 * 1024 * 1024).decode('utf-8', 'replace')
+        _code = _r.status
+except urllib.error.HTTPError as _e:
+    return 'WebFetch HTTP error %s for %s' % (_e.code, _u)
+except Exception as _e:
+    return 'WebFetch error: %s' % _e
+
+# HTML -> text：剥离 script/style（反引用 \1）、去标签、压空白
+_txt = re.sub(r'(?is)<(script|style).*?</\1>', ' ', _raw)
+_txt = re.sub(r'(?s)<[^>]+>', ' ', _txt)
+import html as _html
+_txt = _html.unescape(_txt)
+_txt = re.sub(r'[ \t]+', ' ', _txt)
+_txt = re.sub(r'\n\s*\n+', '\n', _txt).strip()
+
+MAX = 20000
+if len(_txt) > MAX:
+    _txt = _txt[:MAX] + '\n... [truncated]'
+
+_redirect_note = ''
+if _final != _u:
+    _redirect_note = '\n[redirected to: %s — fetch the new URL if needed]' % _final
+return 'URL: %s (HTTP %s)%s\n\n%s' % (_u, _code, _redirect_note, _txt)
+"""
+}
+
+@tool("Search the web using DuckDuckGo Instant Answer API and return results with Sources. query: the search query. Returns abstract text + related topic links. Free, no API key needed.")
+fn WebSearch(query: string): string {
+    python! """
+import json, urllib.request, urllib.parse
+_q = (query or '').strip()
+if not _q:
+    return 'WebSearch error: query is required.'
+_url = 'https://api.duckduckgo.com/?' + urllib.parse.urlencode({'q': _q, 'format': 'json', 'no_html': '1', 'no_redirect': '1', 'skip_disambig': '1'})
+try:
+    _req = urllib.request.Request(_url, headers={'User-Agent': 'Mozilla/5.0 (compatible; nexa-ccport)'})
+    with urllib.request.urlopen(_req, timeout=15) as _r:
+        _data = json.loads(_r.read().decode('utf-8', 'replace'))
+except Exception as _e:
+    return 'WebSearch error: %s' % _e
+_lines = []
+_abstract = _data.get('AbstractText', '')
+_abstract_source = _data.get('AbstractSource', '')
+_abstract_url = _data.get('AbstractURL', '')
+if _abstract:
+    _lines.append(_abstract)
+    if _abstract_url:
+        _lines.append('Source: %s — %s' % (_abstract_source, _abstract_url))
+_topics = _data.get('RelatedTopics', [])
+_sources = []
+for _t in _topics[:8]:
+    if isinstance(_t, dict) and _t.get('FirstURL'):
+        _text = _t.get('Text', '')[:120]
+        _sources.append('- [%s](%s)' % (_text, _t.get('FirstURL', '')))
+if _sources:
+    _lines.append('')
+    _lines.append('Sources:')
+    _lines.extend(_sources)
+if not _lines:
+    return 'No results found for: %s' % _q
+return chr(10).join(_lines)
+"""
+}

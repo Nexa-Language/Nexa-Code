@@ -1,0 +1,55 @@
+// =============================================================================
+// plan.nx — Plan 工具（忠实移植 EnterPlanMode / ExitPlanMode / VerifyPlanExecution）
+// -----------------------------------------------------------------------------
+// Ported from (唯一翻译源 refs/claude-code-ts):
+//   packages/builtin-tools/src/tools/
+//     - EnterPlanModeTool/prompt.ts:4-50 + EnterPlanModeTool.ts:77-124 → 无参，转 plan 模式 + 指令
+//     - ExitPlanModeTool/prompt.ts:6-23 + ExitPlanModeV2Tool.ts → 无参，请求批准/退出 plan
+//     - VerifyPlanExecutionTool.ts:7-92 → plan_summary/verification_notes/all_steps_completed→verified
+// 忠实度：full(核心行为)。EnterPlanMode→转 plan 权限模式(对齐 Phase 1 set_permission_mode('plan'))
+//   +只读探索指令；ExitPlanMode→请求批准+退回 default；VerifyPlan→verified/failed 文案。
+//   plan 文件持久化/approval 对话框是平台 UI，本移植对齐【工具行为+模式转换】。
+// python! 用单 \n（真换行）。
+// =============================================================================
+
+@tool("Requests permission to enter plan mode for complex tasks requiring exploration and design. In plan mode you explore the codebase (read-only) and design an approach, then use ExitPlanMode to present the plan for approval. Do NOT write or edit files in plan mode.")
+fn EnterPlanMode(): string {
+    python! """
+set_permission_mode('plan')
+_msg = 'Entered plan mode. You should now focus on exploring the codebase and designing an implementation approach.'
+return _msg + '''
+
+In plan mode, you should:
+1. Thoroughly explore the codebase to understand existing patterns
+2. Identify similar features and architectural approaches
+3. Consider multiple approaches and their trade-offs
+4. Use AskUserQuestion if you need to clarify the approach
+5. Design a concrete implementation strategy
+6. When ready, use ExitPlanMode to present your plan for approval
+
+Remember: DO NOT write or edit any files yet. This is a read-only exploration and planning phase.'''
+"""
+}
+
+@tool("Use when in plan mode and finished writing your plan, ready for user approval. Signals the plan is complete and exits plan mode (returns to default). Only use for planning implementation steps that require writing code; not for research tasks.")
+fn ExitPlanMode(): string {
+    python! """
+set_permission_mode('default')
+return ('Plan presented for approval. Exiting plan mode (returning to default permission mode). '
+        'You may now implement the approved plan. If the user did not approve, do not proceed with implementation.')
+"""
+}
+
+@tool("Verify that a plan has been executed correctly before exiting plan mode. plan_summary: summary of the executed plan. all_steps_completed: whether all steps completed. verification_notes: notes on what was verified / issues found.")
+fn VerifyPlan(plan_summary: string, all_steps_completed: boolean, verification_notes: string): string {
+    python! """
+_ok = bool(all_steps_completed) if all_steps_completed is not None else False
+_notes = (verification_notes or '').strip()
+_summary = plan_summary or ''
+if _notes:
+    _summary = _summary + ' | notes: ' + _notes
+if _ok:
+    return 'Plan verified: %s' % _summary
+return 'Plan verification failed: %s' % _summary
+"""
+}

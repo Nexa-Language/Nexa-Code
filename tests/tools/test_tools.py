@@ -1,0 +1,251 @@
+#!/usr/bin/env python
+# tests/tools/test_tools.py — 工具正确性回归测试
+# ═══════════════════════════════════════════════════════════
+# 审查 agent（Claude Code 本会话）维护。每次开发 agent 完成后运行。
+# 运行: python tests/tools/test_tools.py
+# 不需要 LLM；直接调用编译后的工具函数，测纯逻辑正确性。
+# 需要先 nexa build src/main.nx（确保 src/main.py 是最新编译产物）。
+# ═══════════════════════════════════════════════════════════
+import sys, os, json, shutil, tempfile, traceback
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(ROOT, 'src'))
+os.chdir(ROOT)
+
+import main as M  # 编译产物
+
+# ─── 测试框架 ───
+PASS = 0; FAIL = 0; SKIP = 0; RESULTS = []
+
+def check(name, condition, detail=''):
+    global PASS, FAIL
+    if condition:
+        PASS += 1; RESULTS.append((name, 'PASS', ''))
+    else:
+        FAIL += 1; RESULTS.append((name, 'FAIL', detail))
+
+def skip(name, reason):
+    global SKIP
+    SKIP += 1; RESULTS.append((name, 'SKIP', reason))
+
+def safe(name, fn):
+    """运行测试，捕获异常，自动 FAIL+traceback"""
+    try:
+        fn()
+    except Exception as e:
+        check(name, False, f'EXCEPTION: {str(e)[:120]}')
+
+# ─── Grep 13 参数助手 ───
+def grep_defaults(pattern, **kw):
+    """Grep 的 13 个必填参数，用默认值填充未指定的"""
+    defaults = dict(path='', glob='', output_mode='content', glob_type='',
+        context_before='0', context_after='0', context_c='0',
+        show_line_numbers='true', case_insensitive='false',
+        head_limit='100', offset='0', multiline='false')
+    defaults.update(kw)
+    return M.Grep(pattern, **defaults)
+
+# ─── 测试数据 ───
+TMP = os.path.join(ROOT, '_test_tmp')
+os.makedirs(TMP, exist_ok=True)
+
+def setup_file(name, content):
+    p = os.path.join(TMP, name)
+    with open(p, 'w') as f: f.write(content)
+    return p
+
+# ═══════════════════════════════════════════════════════════
+# 测试开始
+# ═══════════════════════════════════════════════════════════
+
+def test_read():
+    f = setup_file('read.txt', 'apple\nbanana\ncherry\n')
+    # 正常读取
+    r = M.Read(f, '1', '10', '')
+    check('Read.正常', 'apple' in r and 'cherry' in r, f'缺内容: {r[:60]}')
+    # offset/limit
+    r = M.Read(f, '2', '1', '')
+    check('Read.offset_limit', 'banana' in r and 'apple' not in r, f'应只含banana: {r[:60]}')
+    # 不存在
+    r = M.Read(os.path.join(TMP, 'nope.txt'), '1', '10', '')
+    check('Read.不存在', any(x in r.lower() for x in ['not exist', 'does not', 'no such']), f'应报错: {r[:60]}')
+    # 空文件
+    f2 = setup_file('empty.txt', '')
+    r = M.Read(f2, '1', '10', '')
+    check('Read.空文件', 'empty' in r.lower(), f'应提示空: {r[:60]}')
+
+def test_edit():
+    import shutil as sh
+    f = setup_file('edit.txt', 'apple\nbanana\ncherry\n')
+    # 必须先 Read（staleness 检查）
+    M.Read(f, '1', '10', '')
+    r = M.Edit(f, 'banana', 'BANANA', 'false')
+    content = open(f).read()
+    check('Edit.精确替换', 'BANANA' in content and 'banana' not in content, '替换未生效')
+    # 无 Read 被拒
+    f2 = setup_file('edit2.txt', 'hello\n')
+    r = M.Edit(f2, 'hello', 'world', 'false')
+    check('Edit.无Read被拒', any(x in r.lower() for x in ['must', 'read', 'error']), f'应拒绝: {r[:60]}')
+    # 不存在 old_string
+    M.Read(f, '1', '10', '')
+    r = M.Edit(f, 'nonexistent_text', 'xxx', 'false')
+    check('Edit.未找到', any(x in r.lower() for x in ['not found', 'no match', 'error']), f'应报未找到: {r[:60]}')
+
+def test_multiedit():
+    f = setup_file('multi.txt', 'one\ntwo\nthree\n')
+    M.Read(f, '1', '10', '')
+    edits = json.dumps([{'old_string': 'one', 'new_string': 'ONE'}, {'old_string': 'three', 'new_string': 'THREE'}])
+    r = M.MultiEdit(f, edits)
+    content = open(f).read()
+    check('MultiEdit.2处', 'ONE' in content and 'THREE' in content, '未全部替换')
+
+def test_write():
+    f = os.path.join(TMP, 'write.txt')
+    r = M.Write(f, 'hello world')
+    check('Write.创建', open(f).read() == 'hello world', '内容不匹配')
+    # 嵌套目录
+    f2 = os.path.join(TMP, 'nested', 'deep', 'file.txt')
+    r = M.Write(f2, 'deep')
+    check('Write.嵌套目录', os.path.isfile(f2) and open(f2).read() == 'deep', '嵌套创建失败')
+
+def test_bash():
+    r = M.Bash('echo bash_ok', '10000', 'false')
+    check('Bash.echo', 'bash_ok' in r, f'输出: {r[:60]}')
+    # 非零退出
+    r = M.Bash('exit 1', '10000', 'false')
+    check('Bash.非零退出', 'exit code' in r.lower() or '1' in r, f'应显示退出码: {r[:60]}')
+
+def test_grep():
+    setup_file('grep1.txt', 'hello world\nfoo bar\nhello again\n')
+    # 正常搜索
+    r = grep_defaults('hello')
+    check('Grep.匹配', 'hello' in r, f'应含hello: {r[:60]}')
+    # 无效正则
+    r = grep_defaults('[invalid')
+    check('Grep.无效正则', 'error' in r.lower() or 'fail' in r.lower(), f'应报错: {r[:60]}')
+    # count 模式
+    r = grep_defaults('hello', output_mode='count')
+    check('Grep.count模式', 'grep1' in r, f'count结果: {r[:60]}')
+
+def test_glob():
+    setup_file('glob1.txt', 'x')
+    r = M.Glob(os.path.join(TMP, 'glob*.txt'), '')
+    check('Glob.匹配', 'glob1' in r, f'应含glob1: {r[:60]}')
+    r = M.Glob(os.path.join(TMP, 'nonexistent_*.xyz'), '')
+    check('Glob.无匹配', 'no' in r.lower() or 'not found' in r.lower() or 'empty' in r.lower(), f'应提示无匹配: {r[:60]}')
+
+def test_notebook():
+    nb = {"cells": [{"cell_type": "code", "source": ["print(1)\n"], "outputs": [], "metadata": {}}], "metadata": {}, "nbformat": 4, "nbformat_minor": 5}
+    f = setup_file('test.ipynb', json.dumps(nb))
+    # 读注册 staleness
+    M.Read(f, '1', '10', '')
+    r = M.NotebookEdit(f, '0', 'print(42)', 'code', 'replace')
+    check('NotebookEdit.replace', '42' in r or 'ok' in r.lower() or 'cell' in r.lower(), f'结果: {r[:80]}')
+
+def test_todowrite():
+    r = M.TodoWrite(json.dumps([{'content': 'task1', 'status': 'pending'}, {'content': 'task2', 'status': 'in_progress'}]))
+    check('TodoWrite.创建', 'success' in r.lower() or 'modified' in r.lower() or 'todo' in r.lower(), f'应确认成功: {r[:80]}')
+    # 全完成清除
+    r = M.TodoWrite(json.dumps([{'content': 'task1', 'status': 'completed'}]))
+    check('TodoWrite.更新', 'task1' in r.lower() or 'todo' in r.lower(), f'应更新: {r[:60]}')
+
+def test_plan():
+    r = M.EnterPlanMode()
+    check('EnterPlanMode', 'plan' in r.lower() or 'mode' in r.lower() or len(r) > 0, f'结果: {r[:60]}')
+    r = M.ExitPlanMode()
+    check('ExitPlanMode', 'plan' in r.lower() or 'mode' in r.lower() or 'default' in r.lower() or len(r) > 0, f'结果: {r[:60]}')
+
+def test_verify():
+    r = M.VerifyPlan('all good', 'true', 'everything checks out')
+    check('VerifyPlan.pass', 'pass' in r.lower() or 'verified' in r.lower() or 'satisf' in r.lower(), f'应pass/verified: {r[:60]}')
+    r = M.VerifyPlan('incomplete', 'false', 'missing tests')
+    check('VerifyPlan.fail', 'fail' in r.lower() or 'not' in r.lower(), f'应fail: {r[:60]}')
+
+def test_task_system():
+    # Create
+    r = M.TaskCreate('test task', 'a test', 'Testing', '{}')
+    check('TaskCreate', 'task' in r.lower() or 'creat' in r.lower() or len(r) > 0, f'结果: {r[:60]}')
+    # List
+    r = M.TaskList()
+    check('TaskList', 'task' in r.lower() or len(r) > 0, f'列表: {r[:60]}')
+
+def test_search_execute():
+    r = M.SearchExtraTools('read file', '5')
+    check('SearchExtraTools', len(r) >= 0, f'结果: {r[:80]}')  # 返回非空或空都算不崩
+
+def test_config():
+    r = M.Config('get', 'model', '')
+    check('Config.get', len(r) >= 0, f'结果: {r[:80]}')
+
+def test_repl():
+    r = M.REPL('print(6*7)')
+    check('REPL.计算', '42' in str(r), f'应返回42: {str(r)[:80]}')
+
+def test_push_notification():
+    try:
+        r = M.PushNotification('Test', 'Notification test')
+        check('PushNotification.不崩', True)
+    except Exception as e:
+        check('PushNotification.不崩', False, str(e)[:60])
+
+def test_terminal_capture():
+    try:
+        r = M.TerminalCapture(os.path.join(TMP, 'screen.png'))
+        check('TerminalCapture.不崩', True)
+    except Exception as e:
+        check('TerminalCapture.不崩', False, str(e)[:60])
+
+def test_web():
+    # WebFetch（需网络，超时则 SKIP）
+    import subprocess
+    try:
+        r = M.WebFetch('https://example.com', 'What is this page about?')
+        check('WebFetch.example.com', 'Example' in r or 'example' in r.lower() or len(r) > 50, f'结果: {r[:80]}')
+    except Exception as e:
+        skip('WebFetch', f'网络不可用: {str(e)[:60]}')
+    # WebSearch（DDG API）
+    try:
+        r = M.WebSearch('Python programming language')
+        check('WebSearch.python', len(r) > 20, f'结果: {r[:80]}')
+    except Exception as e:
+        skip('WebSearch', f'网络/API不可用: {str(e)[:60]}')
+
+def test_agent():
+    skip('Agent', '需要 LLM 调用，不在工具正确性测试范围')
+
+def test_ask_user():
+    skip('AskUserQuestion', '需要交互式用户输入')
+
+# ═══════════════════════════════════════════════════════════
+# 运行所有测试
+# ═══════════════════════════════════════════════════════════
+
+TESTS = [
+    ('Read', test_read), ('Edit', test_edit), ('MultiEdit', test_multiedit),
+    ('Write', test_write), ('Bash', test_bash), ('Grep', test_grep),
+    ('Glob', test_glob), ('NotebookEdit', test_notebook), ('TodoWrite', test_todowrite),
+    ('Plan', test_plan), ('VerifyPlan', test_verify), ('Task', test_task_system),
+    ('SearchExtraTools', test_search_execute), ('Config', test_config),
+    ('REPL', test_repl), ('PushNotification', test_push_notification),
+    ('TerminalCapture', test_terminal_capture), ('Web', test_web),
+    ('Agent', test_agent), ('AskUserQuestion', test_ask_user),
+]
+
+for name, fn in TESTS:
+    safe(name, fn)
+
+# ─── 清理 ───
+shutil.rmtree(TMP, ignore_errors=True)
+
+# ─── 报告 ───
+print('\n' + '='*60)
+print('工具正确性回归测试 — ' + str(len(RESULTS)) + ' 组')
+print('='*60)
+for name, status, detail in RESULTS:
+    marker = '✅' if status == 'PASS' else ('⏭️' if status == 'SKIP' else '❌')
+    line = f'  {marker} {name}'
+    if detail: line += f' — {detail}'
+    print(line)
+print(f'\n{PASS} PASS / {FAIL} FAIL / {SKIP} SKIP')
+print('='*60)
+sys.exit(1 if FAIL > 0 else 0)

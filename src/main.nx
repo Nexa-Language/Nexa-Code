@@ -1,0 +1,297 @@
+// =============================================================================
+// main.nx — REPL 骨架（Phase 1e）+ 组装入口
+// -----------------------------------------------------------------------------
+// Ported from (唯一翻译源 refs/claude-code-ts):
+//   - src/screens/REPL.tsx:3967-4036  → onSubmit：input → (/命令派发 | user 消息→query→渲染)
+//   - src/screens/REPL.tsx:638        → onExit → onClose（退出）
+//   - src/commands/exit/index.js      → /exit 命令（process.exit / gracefulShutdown）
+// 忠实度：partial（移植核心交互循环：prompt→submit→命令/agent→render→exit；输出渲染
+//   用 std.ui(banner/agent_reply) 对齐 Ink 的核心输出。输入用 Nexa 内建 input() 而非
+//   std.ui.input——后者走 prompt_toolkit，在 Windows bash 非 TTY 报 NoConsoleScreenBufferError，
+//   见 PORT_TRACE Q-RUN-2。Ink 全套渲染(Messages/流式 spinner/权限确认 UI/工具结果 JSX)
+//   是平台层 UI 细节，Phase 1 只对齐交互 LOOP，登记 partial）。
+// Phase 1 命令：仅 /help /exit /quit（其余 /clear /compact /model 等 Phase 3 逐个忠实移植）。
+//
+// 文件关系：本文件 include 全部 Phase 1 组件——
+//   stub_tools.nx(Phase1 占位工具) / context.nx(1b) / permissions.nx(1c) /
+//   agents.nx(1a 真 system prompt) / query_mapping.nx(1d 映射文档)。
+// turn 循环：经 Coder.run() 运行（对齐 query.ts 主循环，见 query_mapping.nx）。
+// python! 用单 \n（真换行）；else-if 一律嵌套 if/else。
+// =============================================================================
+
+include "tools/read.nx";
+include "tools/write.nx";
+include "tools/edit.nx";
+include "tools/bash.nx";
+include "tools/grep.nx";
+include "tools/glob.nx";
+include "tools/notebook.nx";
+include "tools/multi_edit.nx";
+include "tools/ask_user.nx";
+include "tools/task.nx";
+include "tools/search_extra.nx";
+include "tools/skill.nx";
+include "tools/config_tool.nx";
+include "tools/platform.nx";
+include "tools/todo.nx";
+include "tools/agent.nx";
+include "tools/plan.nx";
+include "tools/mcp.nx";
+include "tools/web.nx";
+include "context.nx";
+include "permissions.nx";
+include "agents.nx";
+include "query_mapping.nx";
+include "commands.nx";
+include "harness.nx";
+
+// --- REPL 内部 helper（不绑给 agent：Coder 显式 uses 7 个真工具）---------------
+
+// 注入 CC 首条 user 消息（getSystemContext+getUserContext 组装的 env/git/CLAUDE.md/date）。
+// 对齐 CC：system msg 之后、用户首个 query 之前的「context」user 消息（context.ts:113-188）。
+@tool("Seed CC first-user-message context into agent history (context.ts getUserContext/getSystemContext)")
+fn seed_context(content: string): string {
+    python! """
+if content:
+    Coder.messages.append({'role': 'user', 'content': content})
+return 'ok'
+"""
+}
+
+@tool("trim leading/trailing whitespace")
+fn trim(s: string): string {
+    python! """
+return s.strip()
+"""
+}
+
+@tool("does s start with prefix? returns 'true'/'false'")
+fn starts_with(s: string, prefix: string): string {
+    python! """
+return 'true' if s.startswith(prefix) else 'false'
+"""
+}
+
+@tool("strip a leading prefix from s; returns s without the prefix (or s unchanged if no prefix)")
+fn strip_prefix(s: string, prefix: string): string {
+    python! """
+return s[len(prefix):] if s.startswith(prefix) else s
+"""
+}
+
+// 复合布尔(or)放 python! 内（flow 条件里 or/and 链 codegen 会串行化成 AST dict，不可靠）。
+@tool("is exit command? (empty | /exit | /quit) returns 'true'/'false'")
+fn is_exit_command(s: string): string {
+    python! """
+return 'true' if (s == '' or s == '/exit' or s == '/quit') else 'false'
+"""
+}
+
+// --- Headless 引擎 API（Phase 6）：单 turn 编排 L+C+E，供原生 UI 调用 ----------
+// 原生 UI（Phase 8 Textual）每轮调 run_one_turn(prompt) 驱动 agent；流式经 runtime stdout(P-RUN-1)。
+@tool("Headless engine: run one turn = UserPromptSubmit hook (L) + auto-compact (C) + safe-run with GLM retry (E). Native UI calls this per turn.")
+fn run_one_turn(prompt: string): string {
+    python! """
+# L: UserPromptSubmit 钩子（用户可配，settings.json hooks）
+_hook_r = run_hook_event('UserPromptSubmit', '', prompt)
+if 'BLOCKED' in (_hook_r or ''):
+    return '[hook blocked] ' + _hook_r
+# C: 接近 token 上限自动摘要压缩
+auto_compact_if_needed(0)
+# E: 带 GLM 瞬态错误退避重试的安全 turn
+return run_turn_safe(prompt, 3)
+"""
+}
+
+// --- JSON 事件模式（Phase 11）：headless 引擎结构化 I/O，供 Ink/React UI 经 subprocess+JSON 管道驱动 ---
+// 引擎侧 I/O 层（非 agent 逻辑）：stdin 读 JSON(message/command)，stdout 发 JSON 事件
+// (assistant_token/tool_call/tool_result/permission_request/done/error)。与 std.ui REPL 并存。
+@tool("JSON-events mode: structured headless I/O for native UI. Reads JSON lines from stdin, emits events to stdout. Set via NEXA_JSON_EVENTS=1.")
+fn run_json_events(): string {
+    python! """
+import sys, json, os
+from contextlib import redirect_stdout, redirect_stderr
+
+# Phase 12 P0 Fix 4: 结构化 tool 事件（P-RUN-2 hooks，非 stdout regex scrape）
+# Phase 12 P0 Fix 3: permission request_id 匹配
+# NEXA_QUIET=1 抑制 _debug_print 标记（工具事件由 hooks 发，不再 scrape stdout）
+os.environ['NEXA_QUIET'] = '1'
+os.environ['NEXA_STREAM_TOOLS'] = '1'
+
+_real_out = sys.__stdout__
+def _emit(ev):
+    _real_out.write(json.dumps(ev, ensure_ascii=False) + chr(10))
+    _real_out.flush()
+
+# --- request_id 计数器 ---
+_rid = [0]
+def _next_rid():
+    _rid[0] += 1
+    return _rid[0]
+
+# --- 结构化 tool 事件 hooks（Fix 4）---
+# 必须在 init_permissions 前注册（保证 PreToolUse 顺序：tool_event → permission）
+from src.runtime.tools_registry import register_tool_hook
+def _tool_pre(name, args_dict):
+    _emit({'type': 'tool_call', 'name': name, 'args': args_dict})
+    return None
+def _tool_post(name, args_dict, result):
+    _emit({'type': 'tool_result', 'name': name, 'result': result})
+    return None
+register_tool_hook('PreToolUse', _tool_pre)
+register_tool_hook('PostToolUse', _tool_post)
+
+# 引擎初始化（注册权限 hook 在 tool-event hook 之后）
+init_permissions()
+seed_context(build_user_context('glm-5.1'))
+
+# --- permission ask with request_id（Fix 3）---
+def _ask(tool, args_str):
+    _rid_v = _next_rid()
+    _emit({'type': 'permission_request', 'request_id': _rid_v, 'tool': tool, 'args': args_str})
+    _approved = False
+    while True:
+        _line = sys.stdin.readline()
+        if not _line:
+            break
+        try:
+            _r = json.loads(_line)
+            if _r.get('type') == 'permission_response' and _r.get('request_id') == _rid_v:
+                _approved = _r.get('approved', False)
+                break
+        except Exception:
+            pass
+    if not _approved:
+        _emit({'type': 'tool_result', 'name': tool, 'result': '[Permission denied by user]'})
+    return 'y' if _approved else 'n'
+globals()['_CCPORT_ASK_HANDLER'] = _ask
+
+_emit({'type': 'ready', 'model': 'glm-5.1'})
+
+# --- assistant_token 流式捕获（NEXA_QUIET 后 stdout 只有流式回复 token，无标记）---
+class _TokenStream:
+    def write(self, s):
+        if s:
+            _emit({'type': 'assistant_token', 'content': s})
+        return len(s) if isinstance(s, str) else 0
+    def flush(self):
+        pass
+
+class _StderrStream:  # H5: 替代 _NullStream——不吞 stderr，发 error 事件到 UI
+    def write(self, s):
+        if s and s.strip():
+            _emit({'type': 'error', 'message': '[stderr] ' + s.strip()[:300]})
+        return len(s) if isinstance(s, str) else 0
+    def flush(self):
+        pass
+
+while True:
+    _line = sys.stdin.readline()
+    if not _line:
+        break
+    _line = _line.strip()
+    if not _line:
+        continue
+    try:
+        _req = json.loads(_line)
+    except Exception as _e:
+        _emit({'type': 'error', 'message': 'bad json: %s' % _e})
+        continue
+    _t = _req.get('type')
+    # H5: set_mode command from UI (shift+tab cycling)
+    if _t == 'set_mode':
+        _new_mode = _req.get('mode', 'default')
+        set_permission_mode(_new_mode)
+        _emit({'type': 'mode_changed', 'mode': _new_mode})
+        continue
+    if _t == 'command':
+        _name = _req.get('name', '')
+        try:
+            _out = run_command(_name)
+            if _out == '__CC_EXIT__':
+                _emit({'type': 'done', 'reply': 'exit'})
+                break
+            elif _out.startswith('__AS_PROMPT__:'):
+                _emit({'type': 'turn_status', 'phase': 'thinking'})
+                with redirect_stdout(_TokenStream()), redirect_stderr(_StderrStream()):
+                    _rep = run_one_turn(_out[len('__AS_PROMPT__:'):])
+                _emit({'type': 'turn_status', 'phase': 'idle'})
+                _emit({'type': 'done', 'reply': _rep})
+            else:
+                _emit({'type': 'command_result', 'name': _name, 'result': _out})
+        except Exception as _e:
+            _emit({'type': 'error', 'message': str(_e)})
+    elif _t == 'message':
+        try:
+            _emit({'type': 'turn_status', 'phase': 'thinking'})
+            with redirect_stdout(_TokenStream()), redirect_stderr(_StderrStream()):
+                _rep = run_one_turn(_req.get('content', ''))
+            _emit({'type': 'turn_status', 'phase': 'idle'})
+            _emit({'type': 'done', 'reply': _rep})
+        except Exception as _e:
+            _emit({'type': 'error', 'message': str(_e)})
+    elif _t == 'exit':
+        break
+    else:
+        _emit({'type': 'error', 'message': 'unknown type: %s' % _t})
+_emit({'type': 'session_end'})
+return 'json-events-done'
+"""
+}
+
+@tool("is JSON-events mode? (env NEXA_JSON_EVENTS=1) returns 'true'/'false'")
+fn is_json_mode(): string {
+    python! """
+import os
+return 'true' if os.environ.get('NEXA_JSON_EVENTS') else 'false'
+"""
+}
+
+// --- REPL 驱动（Phase 6 拆分：可被原生 UI 替换）——对齐 REPL.tsx onSubmit --------
+flow main {
+    _jm = is_json_mode();
+    if (_jm == "true") {
+        _jr = run_json_events();
+    } else {
+        std.ui.banner("Claude Code", "Nexa port — Phase 11 (glm-5.1 + Ink/React via JSON events)");
+        _pinit = init_permissions();
+        print(_pinit);
+        _ctx = build_user_context("glm-5.1");
+        seed_context(_ctx);
+        print("[context injected: " + trim(_ctx) + " chars]");
+
+        _running = true;
+        while (_running == true) {
+            _raw = input("> ");
+            _t = trim(_raw);
+            _exit = is_exit_command(_t);
+            if (_exit == "true") {
+                print("Goodbye.");
+                _running = false;
+            } else {
+                _iscmd = starts_with(_t, "/");
+                if (_iscmd == "true") {
+                    _cout = run_command(_t);
+                    if (_cout == "__CC_EXIT__") {
+                        print("Goodbye.");
+                        _running = false;
+                    } else {
+                        _isp = starts_with(_cout, "__AS_PROMPT__:");
+                        if (_isp == "true") {
+                            _pp = strip_prefix(_cout, "__AS_PROMPT__:");
+                            _reply = run_one_turn(_pp);
+                            std.ui.agent_reply("Claude", _reply);
+                        } else {
+                            print(_cout);
+                        }
+                    }
+                } else {
+                    _reply = run_one_turn(_raw);
+                    std.ui.agent_reply("Claude", _reply);
+                }
+            }
+        }
+        _stop = run_hook_event("Stop", "none", "{}");
+    }
+    result = "done";
+}

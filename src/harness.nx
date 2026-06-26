@@ -1,0 +1,272 @@
+// =============================================================================
+// harness.nx — Harness 六元组 H=(E,T,C,S,L,V) 生产级补齐（Phase 6，全 Nexa）
+// -----------------------------------------------------------------------------
+// ROADMAP_V2 铁律：harness 必须 Nexa（不得原生冒充）。本文件补 E/C/S/L/V 到生产级。
+// T 维度（@tool fn）已在 tools/ 完成；本文件补 E/C/S/L/V。
+//
+// Ported from (唯一翻译源 refs/claude-code-ts/src/):
+//   E 执行：
+//     - query.ts:890-1208  → attemptWithFallback 重试/模型降级；FallbackTriggeredError→换模型重试
+//     - query.ts:630(agent.py) → NexaAgent 仅对 NexaTimeoutError 重试（GLM 1213/429 不重试→本文件补）
+//   C 上下文：
+//     - services/compact/autoCompact.ts:62-143 → AUTOCOMPACT_BUFFER_TOKENS=13000 / getAutoCompactThreshold / calculateTokenWarningState
+//     - query.ts:558-728 → microcompact/autocompact 触发点
+//   S 状态：
+//     - utils/sessionStorage.ts:248,782-826 → getAgentTranscriptPath / appendEntryToFile（transcript 持久化）
+//     - utils/fileHistory.ts + fileStateCache.ts → file history snapshots
+//   L 生命周期：
+//     - utils/hooks.ts:77-101,200 → HookEvent(PreToolUse/PostToolUse/UserPromptSubmit/Stop) + getHooksConfig
+//     - settings hooks 字段（.claude/settings.json hooks 配置格式）
+//   V 验证：
+//     - Nexa verify 原语（runtime evaluation_interface）；CC 的 verify=verification-agent 模式
+//       (AgentTool VERIFICATION_AGENT_TYPE + systemPrompt 验证契约) — 此处提供 verify 输出校验原语
+// python! 用单 \n（真换行）；复合布尔在 python! 内；正则反引用/字符类用单反斜杠 raw string。
+// =============================================================================
+
+// ── E 执行：run_turn_safe — 包 Coder.run() 加 GLM 错误分类 + 指数退避重试 ──────
+// NexaAgent.run() 仅重试 NexaTimeoutError(agent.py:630)；GLM 1213(prompt 未接收)/429(限流) 会抛出。
+// 本 wrapper 捕获瞬态错误，指数退避重试（对齐 query.ts attemptWithFallback 的重试语义）。
+@tool("Run one agent turn with GLM transient-error retry (E-dimension). Catches GLM 1213 (prompt not received) / 429 (rate limit) / timeouts, exponential backoff, up to max_retries.")
+fn run_turn_safe(prompt: string, max_retries: number): string {
+    python! """
+import time
+
+_p = prompt or ''
+_mr = int(max_retries) if max_retries else 3
+_attempt = 0
+while True:
+    _attempt += 1
+    try:
+        _reply = Coder.run(_p)
+        return _reply if _reply else '(no reply)'
+    except Exception as _e:
+        _msg = str(_e)
+        _code = getattr(_e, 'code', None) or getattr(_e, 'status_code', None) or ''
+        _s = (_msg + ' ' + str(_code)).lower()
+        # GLM 1213 (prompt 未正常接收) / 429 (限流) / overloaded / timeout → 瞬态，退避重试
+        _transient = ('1213' in _s) or ('429' in _s) or ('rate' in _s) or ('overloaded' in _s) or ('timeout' in _s) or ('timed out' in _s) or ('connection' in _s)
+        # 余额/配额不足(1113) 或鉴权(401) → 非瞬态，重试无意义，立即失败
+        if ('1113' in _s) or ('余额' in _msg) or ('充值' in _msg) or ('quota' in _s) or ('insufficient' in _s) or ('401' in _s) or ('invalid_api_key' in _s):
+            _transient = False
+        if (not _transient) or (_attempt > _mr):
+            return '[turn failed after %d attempt(s)] %s' % (_attempt, _msg[:200])
+        # 去重：agent.py:454 在调 LLM 前已 append 本次 user msg；失败重试前 pop 掉尾部的本次 user msg，让重试干净重新 append（避免重试导致历史里重复 user 消息）
+        if Coder.messages and Coder.messages[-1].get('role') == 'user' and Coder.messages[-1].get('content') == _p:
+            Coder.messages.pop()
+        _backoff = min(2 ** _attempt, 30)  # 指数退避：2,4,8,... cap 30s
+        time.sleep(_backoff)
+"""
+}
+
+// ── C 上下文：auto_compact_if_needed — 接近 token 上限自动摘要压缩 ─────────────
+// autoCompact.ts:101-143 getAutoCompactThreshold = contextWindow - AUTOCOMPACT_BUFFER_TOKENS(13000)。
+// 接近阈值时摘要旧消息。glm-5.1 有 200K context，阈值取 150K（保留 50K buffer）。
+@tool("Auto-compact context if near token limit (C-dimension). Estimates tokens (chars/4); if over threshold, summarizes old messages into a summary. Returns action note.")
+fn auto_compact_if_needed(token_threshold: number): string {
+    python! """
+import os
+
+_threshold = int(token_threshold) if token_threshold else 150000  # M7 Fix: glm-5.1 200K context, 75% threshold
+_msgs = [m for m in Coder.messages if m.get('role') in ('user', 'assistant')]
+_chars = sum(len(str(m.get('content', ''))) for m in _msgs)
+# P1-7 Fix: CJK-aware token estimation (CJK ~2 chars/token, EN ~4 chars/token)
+_cjk = sum(1 for _c in str(_msgs) if '一' <= _c <= '鿿')
+_non_cjk = _chars - _cjk
+_est_tokens = int(_cjk * 0.5 + _non_cjk * 0.25)
+if _est_tokens < _threshold:
+    return 'ok (est %d tokens < threshold %d)' % (_est_tokens, _threshold)
+if len(_msgs) < 4:
+    return 'skip (too few messages to compact)'
+# 摘要旧消息（保留最近 2 轮 + system；摘要其余）——对齐 compactConversation 核心行为
+try:
+    _client = Coder._get_client()
+    _keep_recent = _msgs[-4:]
+    _to_sum = _msgs[:-4]
+    _transcript = chr(10).join('[%s] %s' % (m.get('role'), str(m.get('content'))[:600]) for m in _to_sum)
+    _resp = _client.chat.completions.create(
+        model=Coder.model, timeout=60,
+        messages=[{'role': 'system', 'content': 'Summarize this conversation concisely, preserving key decisions, context, and open tasks.'},
+                  {'role': 'user', 'content': _transcript}])
+    _summary = _resp.choices[0].message.content or '(empty summary)'
+    _sys = [m for m in Coder.messages if m.get('role') == 'system']
+    Coder.messages = _sys + [{'role': 'user', 'content': 'Previous conversation summary:\n' + _summary},
+                             {'role': 'assistant', 'content': 'Understood. I have the summary.'}] + _keep_recent
+    return 'compacted (%d tokens -> summary, kept last 4 msgs)' % _est_tokens
+except Exception as _e:
+    return 'compact failed: %s' % str(_e)[:150]
+"""
+}
+
+// ── S 状态：session save/load + file history snapshot ─────────────────────────
+// sessionStorage.ts: transcript 持久化到 ~/.claude/projects/<dir>/<session>.jsonl。
+@tool("Save current session transcript to disk (S-dimension, sessionStorage.ts). path: transcript file path. Returns note.")
+fn save_session(path: string): string {
+    python! """
+import os, json, hashlib
+_p = (path or '').strip()
+if not _p:
+    _proj = os.path.join(os.path.expanduser('~'), '.claude', 'projects', hashlib.md5(os.getcwd().encode()).hexdigest()[:12])
+    import time as _t
+    _p = os.path.join(_proj, 'session-%d.jsonl' % int(_t.time()))
+try:
+    with open(_p, 'w', encoding='utf-8') as _f:
+        for _m in Coder.messages:
+            _f.write(json.dumps(_m, ensure_ascii=False) + chr(10))
+    return 'session saved: %s (%d messages)' % (_p, len(Coder.messages))
+except Exception as _e:
+    return 'save failed: %s' % _e
+"""
+}
+
+@tool("Load a session transcript from disk into agent history (S-dimension). path: transcript file path.")
+fn load_session(path: string): string {
+    python! """
+import os, json, hashlib
+_p = (path or '').strip()
+if not _p or not os.path.isfile(_p):
+    return 'session file not found: %s' % _p
+try:
+    _loaded = []
+    with open(_p, 'r', encoding='utf-8') as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line:
+                _loaded.append(json.loads(_line))
+    if _loaded:
+        _sys = [m for m in Coder.messages if m.get('role') == 'system']
+        Coder.messages = _sys + [m for m in _loaded if m.get('role') != 'system']
+    return 'session loaded: %s (%d messages)' % (_p, len(Coder.messages))
+except Exception as _e:
+    return 'load failed: %s' % _e
+"""
+}
+
+@tool("List saved sessions for this project (S-dimension). Returns transcript file paths.")
+fn list_sessions(): string {
+    python! """
+import os, glob as _g
+_proj = os.path.join(os.path.expanduser('~'), '.claude', 'projects', hashlib.md5(os.getcwd().encode()).hexdigest()[:12])
+_files = sorted(_g.glob(os.path.join(_proj, 'session-*.jsonl')), reverse=True)
+if not _files:
+    return 'No saved sessions in %s' % _proj
+return chr(10).join(_files[:20])
+"""
+}
+
+// file history snapshot：编辑前备份（补全 _CCPORT_READ_STATE 的 staleness 到 CC fileHistory 行为）
+@tool("Snapshot a file before editing (S-dimension fileHistory). path: file to back up. Returns backup path.")
+fn snapshot_file(path: string): string {
+    python! """
+import os, shutil, time
+_p = (path or '').strip()
+if not _p or not os.path.isfile(_p):
+    return 'no file to snapshot: %s' % _p
+_hist = globals().setdefault('_CCPORT_FILE_HISTORY', {})
+_stack = _hist.setdefault(os.path.abspath(_p), [])
+_bak = '%s.ccport-bak-%d' % (_p, int(time.time()))
+shutil.copy2(_p, _bak)
+_stack.append(_bak)
+return 'snapshot: %s' % _bak
+"""
+}
+
+@tool("Restore a file from its last snapshot (S-dimension fileHistory). path: file to restore.")
+fn restore_file_snapshot(path: string): string {
+    python! """
+import os, shutil
+_p = (path or '').strip()
+_hist = globals().get('_CCPORT_FILE_HISTORY', {})
+_stack = _hist.get(os.path.abspath(_p), [])
+if not _stack:
+    return 'no snapshot for %s' % _p
+_bak = _stack.pop()
+if os.path.isfile(_bak):
+    shutil.copy2(_bak, _p)
+    return 'restored %s from %s' % (_p, _bak)
+return 'snapshot missing: %s' % _bak
+"""
+}
+
+// ── L 生命周期：用户可配 hooks（4 事件，settings.json 驱动）────────────────────
+// hooks.ts:77-101 HookEvent；settings.json hooks 字段格式：{hooks: {PreToolUse: [{matcher, hooks:[{type:command, command}]}]}}
+// 本函数读 settings hooks，匹配事件+工具，执行配置的 shell 命令，返回合并输出（exit!=0 → 阻断）。
+@tool("Run user-configured hooks for an event (L-dimension, hooks.ts). event: PreToolUse|PostToolUse|UserPromptSubmit|Stop. tool_name: tool (for tool events). input_json: hook input as JSON. Non-zero exit blocks.")
+fn run_hook_event(event: string, tool_name: string, input_json: string): string {
+    python! """
+import os, json, hashlib, subprocess, shutil
+
+_event = (event or '').strip()
+_tool = (tool_name or '').strip()
+# 读 settings.json hooks 配置（hooks.ts getHooksConfig）
+_hooks_cfg = {}
+for _p in (os.path.join(os.getcwd(), '.claude', 'settings.local.json'),
+           os.path.join(os.getcwd(), '.claude', 'settings.json'),
+           os.path.join(os.path.expanduser('~'), '.claude', 'settings.json')):
+    if os.path.isfile(_p):
+        try:
+            with open(_p, 'r', encoding='utf-8') as _f:
+                _d = json.load(_f)
+            _h = (_d or {}).get('hooks', {})
+            if _h:
+                _hooks_cfg = _h; break
+        except Exception:
+            pass
+
+_entries = _hooks_cfg.get(_event) or []
+_bash = shutil.which('bash')
+_out = []
+for _entry in _entries:
+    _matcher = _entry.get('matcher', '')
+    # matcher 匹配 tool_name（空 matcher = 全部；PreToolUse/PostToolUse 用工具名）
+    if _tool and _matcher:
+        _pat = _matcher.replace('*', '')
+        if _pat and (_pat not in _tool):
+            continue
+    for _h in (_entry.get('hooks') or []):
+        if _h.get('type') != 'command':
+            continue
+        _cmd = _h.get('command', '')
+        if not _cmd:
+            continue
+        try:
+            _env = dict(os.environ)
+            if input_json:
+                _env['CC_HOOK_INPUT'] = input_json
+            _args = [_bash, '-c', _cmd] if _bash else _cmd
+            _proc = subprocess.run(_args, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60, env=_env)
+            _txt = (_proc.stdout or '').strip()
+            if _proc.returncode != 0:
+                _txt = (_txt + ((' | ' if _txt else '') + 'stderr: ' + (_proc.stderr or '').strip())).strip()
+                _out.append('[hook %s BLOCKED (exit %d)] %s' % (_cmd[:40], _proc.returncode, _txt[:200]))
+            elif _txt:
+                _out.append('[hook %s] %s' % (_cmd[:40], _txt[:200]))
+        except Exception as _e:
+            _out.append('[hook %s error] %s' % (_cmd[:40], _e))
+return chr(10).join(_out) if _out else ''
+"""
+}
+
+// ── V 验证：verify 输出校验原语 ─────────────────────────────────────────────
+// CC verify = verification-agent（VERIFICATION_AGENT adversarial subagent）；Nexa verify 原语 = 类型/语义校验。
+// 此处提供类型校验原语（string/number/boolean/non-empty）；语义校验映射到 verification-agent（Phase 4 AgentTool）。
+@tool("Verify an output value satisfies a constraint (V-dimension). value: the value to check. satisfies: 'string'|'number'|'boolean'|'non-empty'|<other>=equals check. Returns 'PASS: ...' or 'FAIL: ...'.")
+fn verify_output(value: string, satisfies: string): string {
+    python! """
+_v = value if value is not None else ''
+_s = (satisfies or '').strip()
+if _s == 'string':
+    _ok = isinstance(_v, str)
+elif _s == 'non-empty':
+    _ok = bool(str(_v).strip())
+elif _s == 'number':
+    try:
+        float(_v); _ok = True
+    except Exception:
+        _ok = False
+elif _s == 'boolean':
+    _ok = str(_v).strip().lower() in ('true', 'false')
+else:
+    _ok = (str(_v) == _s)  # 等值校验
+return ('PASS: %r satisfies %r' % (_v, _s)) if _ok else ('FAIL: %r does not satisfy %r' % (_v, _s))
+"""
+}

@@ -1,0 +1,151 @@
+// =============================================================================
+// mcp.nx — MCP 客户端工具（忠实移植 MCPTool/ListMcpResources/ReadMcpResource/McpAuth）
+// -----------------------------------------------------------------------------
+// Ported from (唯一翻译源 refs/claude-code-ts):
+//   packages/builtin-tools/src/tools/
+//     - MCPTool/MCPTool.ts              → 通用 MCP 工具执行器（passthrough；per-connection override）
+//     - ListMcpResourcesTool/prompt.ts + ListMcpResourcesTool.ts → resources/list (server 可选)
+//     - ReadMcpResourceTool/prompt.ts + ReadMcpResourceTool.ts:22-27 → resources/read (server, uri)
+//     - McpAuthTool/McpAuthTool.ts:38-85 → OAuth 伪工具（installed-but-unauthenticated 提示）
+//   MCP 传输：stdio JSON-RPC 2.0（newline-delimited），对齐 mcp-client 协议。
+// 忠实度：partial→full(协议)：stdio JSON-RPC 客户端(initialize→initialized→method)；
+//   MCPTool→tools/call；ListMcpResources→resources/list；ReadMcpResource→resources/read；
+//   McpAuth→OAuth 说明（完整浏览器 OAuth 流是平台层 Phase 5）。配置读 .mcp.json mcpServers。
+//   _mcp_call / _mcp_load_config 为内部 @tool helper（不绑 agent：Coder 显式 uses），供其它工具直调。
+// python! 用单 \n（真换行）。
+// =============================================================================
+
+// 内部 helper：加载 MCP 配置（.mcp.json mcpServers）。
+@tool("internal: load MCP server config (.mcp.json mcpServers) as JSON")
+fn _mcp_load_config(): string {
+    python! """
+import json, os
+_cfg = {}
+for _p in ('.mcp.json', os.path.join(os.getcwd(), '.mcp.json')):
+    if os.path.isfile(_p):
+        try:
+            with open(_p, 'r', encoding='utf-8') as _f:
+                _d = json.load(_f)
+            _cfg = (_d.get('mcpServers') or {})
+            if _cfg:
+                break
+        except Exception:
+            pass
+return json.dumps(_cfg, ensure_ascii=False)
+"""
+}
+
+// 内部 helper：stdio JSON-RPC 调用某 MCP server 的方法。
+@tool("internal: stdio JSON-RPC call to an MCP server (initialize -> initialized -> method). params is JSON string.")
+fn _mcp_call(server: string, method: string, params: string): string {
+    python! """
+import json, os, subprocess
+
+_cfg = json.loads(_mcp_load_config())
+if server not in _cfg:
+    return 'MCP server "%s" not configured (.mcp.json mcpServers). Configured: %s' % (server, list(_cfg.keys()))
+_sc = _cfg[server]
+_cmd = [_sc['command']] + list(_sc.get('args', []) or [])
+_env = dict(os.environ)
+_env.update(_sc.get('env', {}) or {})
+try:
+    _proc = subprocess.Popen(_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=_env)
+except Exception as _e:
+    return 'Failed to start MCP server "%s": %s' % (server, _e)
+
+def _sr(_req):
+    _proc.stdin.write((json.dumps(_req) + chr(10)).encode('utf-8'))
+    _proc.stdin.flush()
+    _result = [None]
+    def _reader():
+        _line = _proc.stdout.readline()
+        if _line:
+            try:
+                _result[0] = json.loads(_line.decode('utf-8', 'replace'))
+            except Exception:
+                _result[0] = None
+    import threading as _th
+    _t = _th.Thread(target=_reader, daemon=True)
+    _t.start()
+    _t.join(timeout=15)
+    if _t.is_alive():
+        return None  # H4 Fix: 超时返回 None（不无限阻塞）
+    return _result[0]
+
+_id = 0
+try:
+    _id += 1
+    _init = _sr({'jsonrpc': '2.0', 'id': _id, 'method': 'initialize',
+                 'params': {'protocolVersion': '2024-11-05', 'capabilities': {},
+                            'clientInfo': {'name': 'nexa-ccport', 'version': '1.0'}}})
+    if _init is None:
+        return 'MCP server "%s" initialize: no response (server may not speak newline-delimited JSON-RPC).' % server
+    _proc.stdin.write((json.dumps({'jsonrpc': '2.0', 'method': 'notifications/initialized'}) + '\n').encode('utf-8'))
+    _proc.stdin.flush()
+    _id += 1
+    _p = json.loads(params) if params else {}
+    _resp = _sr({'jsonrpc': '2.0', 'id': _id, 'method': method, 'params': _p})
+    if _resp is None:
+        return 'MCP server "%s" %s: no response.' % (server, method)
+    if 'error' in _resp and _resp['error']:
+        return 'MCP error (%s %s): %s' % (server, method, _resp['error'])
+    return json.dumps(_resp.get('result'), ensure_ascii=False)
+finally:
+    try:
+        _proc.terminate()
+        _proc.wait(timeout=3)
+    except Exception:
+        try:
+            _proc.kill()
+        except Exception:
+            pass
+"""
+}
+
+// 通用 MCP 工具执行：调指定 server 的某 tool。arguments 为 JSON 字符串。
+@tool("Call a tool on an MCP server. server: MCP server name (from .mcp.json mcpServers). tool_name: the MCP tool to call. arguments: JSON object of arguments for the tool. Connects via stdio JSON-RPC (initialize then tools/call).")
+fn MCPTool(server: string, tool_name: string, arguments: string): string {
+    python! """
+import json
+_args = json.loads(arguments) if arguments else {}
+return _mcp_call(server, 'tools/call', json.dumps({'name': tool_name, 'arguments': _args}))
+"""
+}
+
+@tool("List available resources from configured MCP servers. server: optional specific MCP server name; if omitted lists from all configured servers. Connects via stdio JSON-RPC resources/list.")
+fn ListMcpResources(server: string): string {
+    python! """
+import json
+_srv = (server or '').strip()
+_cfg = json.loads(_mcp_load_config())
+if not _cfg:
+    return 'No MCP servers configured (.mcp.json mcpServers empty/missing).'
+_names = [_srv] if _srv else list(_cfg.keys())
+_out = []
+for _n in _names:
+    if _n not in _cfg:
+        _out.append('%s: not configured' % _n)
+        continue
+    _out.append('--- %s ---' % _n)
+    _out.append(_mcp_call(_n, 'resources/list', '{}'))
+return '\n'.join(_out) if _out else 'No resources.'
+"""
+}
+
+@tool("Read a specific resource from an MCP server. server: MCP server name. uri: the resource URI to read. Connects via stdio JSON-RPC resources/read.")
+fn ReadMcpResource(server: string, uri: string): string {
+    python! """
+import json
+return _mcp_call(server, 'resources/read', json.dumps({'uri': uri}))
+"""
+}
+
+@tool("Start OAuth authentication for an MCP server that is installed but requires auth. server: the MCP server name. (Full browser OAuth flow is a platform-layer feature; this surfaces the auth requirement.)")
+fn McpAuth(server: string): string {
+    python! """
+_srv = (server or '').strip() or '(unknown)'
+return ("The %s MCP server is installed but requires authentication. "
+        "Complete authorization in your browser; once authorized the server's real tools become available. "
+        "(Full OAuth browser redirect is a platform-layer feature — Phase 5.)") % _srv
+"""
+}

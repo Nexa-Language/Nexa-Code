@@ -1,0 +1,60 @@
+// =============================================================================
+// glob.nx — Glob 工具（忠实移植 GlobTool）
+// -----------------------------------------------------------------------------
+// Ported from (唯一翻译源 refs/claude-code-ts):
+//   packages/builtin-tools/src/tools/GlobTool/
+//     - prompt.ts:1-7             → 工具名 'Glob' / 描述（glob 模式 / 按 mtime 排序）
+//     - GlobTool.ts:23-32         → inputSchema (pattern / path 默认 cwd)
+//     - GlobTool.ts:41-47         → output (numFiles / truncated limit 100)
+//     - GlobTool.ts:151-185       → call: glob(pattern, path, {limit:100}) / 相对化路径 / truncation 注记
+//   src/utils/glob.js             → glob 实现（按修改时间排序）
+// 忠实度：full（glob 模式匹配 / 按 mtime 倒序 / limit 100 截断 / 路径相对 cwd / "No files found"）。
+// python! 用单 \n（真换行）。
+// =============================================================================
+
+@tool("Fast file pattern matching tool. Supports glob patterns like **/*.js or src/**/*.ts. Returns matching file paths sorted by modification time. Use when you need to find files by name patterns.")
+fn Glob(pattern: string, path: string): string {
+    python! """
+import os
+import glob as _globmod
+
+_pat = pattern or ''
+_base = (path or '').strip() or os.getcwd()
+_base = os.path.abspath(_base)
+LIMIT = 100   # GlobTool.ts:154 globLimits.maxResults
+
+# 在 _base 下解析 pattern（支持 ** 递归）
+_full_pat = _pat
+if os.path.isabs(_pat):
+    _full_pat = _pat
+else:
+    _full_pat = os.path.join(_base, _pat)
+
+_files = _globmod.glob(_full_pat, recursive=True)
+_files = [f for f in _files if os.path.isfile(f)]
+
+# 按修改时间倒序（最近修改在前）— glob.js
+_files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+
+_truncated = len(_files) > LIMIT
+if _truncated:
+    _files = _files[:LIMIT]
+
+# 相对化到 cwd（省 token，同 GrepTool/GlobTool toRelativePath）
+_cwd = os.getcwd()
+_rel = []
+for _f in _files:
+    try:
+        _r = os.path.relpath(_f, _cwd)
+    except ValueError:
+        _r = _f
+    _rel.append(_r)
+
+if not _rel:
+    return 'No files found'
+_out = '\n'.join(_rel)
+if _truncated:
+    _out += '\n(Results are truncated. Consider using a more specific path or pattern.)'
+return _out
+"""
+}

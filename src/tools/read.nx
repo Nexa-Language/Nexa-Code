@@ -1,0 +1,169 @@
+// =============================================================================
+// read.nx — Read 工具（忠实移植 FileReadTool）
+// -----------------------------------------------------------------------------
+// Ported from (唯一翻译源 refs/claude-code-ts):
+//   packages/builtin-tools/src/tools/FileReadTool/
+//     - prompt.ts:5,10-12,27-49      → 工具名 'Read' / DESCRIPTION / MAX_LINES_TO_READ=2000 / 模板
+//     - limits.ts:18,65              → maxTokens=25000 / maxSizeBytes=MAX_OUTPUT_SIZE(256KB)
+//     - FileReadTool.ts:226-242      → inputSchema (file_path/offset/limit/pages)
+//     - FileReadTool.ts:459-492      → 校验：UNC/binary(拒)/device(拒)
+//     - FileReadTool.ts:494-649      → call: expandPath / dedup(跳过) / ENOENT 建议
+//     - FileReadTool.ts:796-1078     → callInner 分支：notebook / image / pdf / text
+//     - FileReadTool.ts:1011-1029    → text: lineOffset=offset-1 / readFileInRange / maxSizeBytes 门
+//     - FileReadTool.ts:690-701      → text 渲染: addLineNumbers(cat -n) / 空/短文件 system-reminder
+//   src/utils/file.ts:290-319        → addLineNumbers 格式 (padStart(6)+'→' 或 >=6 位无 pad)
+//   src/constants/files.ts:5-112     → BINARY_EXTENSIONS（完整列表）
+//   src/constants/apiLimits.js       → PDF_MAX_PAGES_PER_READ=20
+// 忠实度：full(text: offset/limit/cat-n/256KB门/25000token门/空短提示/binary拒/device拒/ENOENT) +
+//   notebook(.ipynb cells→文本) + image(png/jpg/jpeg/gif/webp: base64，partial——多模态视觉渲染
+//   受 Nexa 字符串工具+OpenAI-compat 运行时限制，返回 base64 数据+说明) + pdf(partial——需
+//   poppler，返回说明)。图片/PDF 的多模态注入为运行时限制，已注明。
+// python! 用单 \n（真换行）。
+// =============================================================================
+
+@tool("Read a file from the local filesystem. Standalone apps can access any file directly. Can read text files (with line numbers, cat -n format), images (PNG, JPG, JPEG, GIF, WEBP), PDF files, and Jupyter notebooks. When reading text files supports optional offset and limit parameters. For images/PDFs max 15 pages per request. You MUST use the offset and limit parameters to read files LARGER than 2000 lines or you will not be able to recall content correctly.")
+fn Read(file_path: string, offset: number, limit: number, pages: string): string {
+    python! """
+import os
+import base64
+
+MAX_SIZE_BYTES = 256 * 1024   # MAX_OUTPUT_SIZE = 256KB (limits.ts:65)
+MAX_TOKENS = 25000            # DEFAULT_MAX_OUTPUT_TOKENS (limits.ts:18)
+PDF_MAX_PAGES = 20            # PDF_MAX_PAGES_PER_READ
+
+BINARY_EXT = {'.png','.jpg','.jpeg','.gif','.bmp','.ico','.webp','.tiff','.tif',
+'.mp4','.mov','.avi','.mkv','.webm','.wmv','.flv','.m4v','.mpeg','.mpg',
+'.mp3','.wav','.ogg','.flac','.aac','.m4a','.wma','.aiff','.opus',
+'.zip','.tar','.gz','.bz2','.7z','.rar','.xz','.z','.tgz','.iso',
+'.exe','.dll','.so','.dylib','.bin','.o','.a','.obj','.lib','.app','.msi','.deb','.rpm',
+'.pdf','.doc','.docx','.xls','.xlsx','.ppt','.pptx','.odt','.ods','.odp',
+'.ttf','.otf','.woff','.woff2','.eot',
+'.pyc','.pyo','.class','.jar','.war','.ear','.node','.wasm','.rlib',
+'.sqlite','.sqlite3','.db','.mdb','.idx',
+'.psd','.ai','.eps','.sketch','.fig','.xd','.blend','.3ds','.max',
+'.swf','.fla','.lockb','.dat','.data'}
+IMAGE_EXT = {'png','jpg','jpeg','gif','webp'}   # FileReadTool.ts:187
+BLOCKED_DEVICES = {'/dev/zero','/dev/random','/dev/urandom','/dev/full','/dev/stdin',
+'/dev/tty','/dev/console','/dev/stdout','/dev/stderr','/dev/fd/0','/dev/fd/1','/dev/fd/2'}
+
+# expandPath: trim + 规范化 (FileReadTool.ts:519)
+fp = (file_path or '').strip()
+full = os.path.abspath(fp)
+_ext_lower = os.path.splitext(full)[1].lower()
+ext = _ext_lower[1:]   # 去点
+
+# device 路径阻断 (FileReadTool.ts:484-490)
+if full in BLOCKED_DEVICES:
+    return "Cannot read '%s': this device file would block or produce infinite output." % file_path
+
+# offset 默认 1 (FileReadTool.ts:495)；limit 可空
+_off = int(offset) if offset else 1
+_lim = int(limit) if limit else None
+
+# --- notebook (.ipynb) (FileReadTool.ts:813-855) ---
+if ext == 'ipynb':
+    if not os.path.isfile(full):
+        return "File does not exist. %s" % file_path
+    import json
+    try:
+        with open(full, 'r', encoding='utf-8', errors='replace') as _f:
+            nb = json.load(_f)
+    except Exception as _e:
+        return "Failed to read notebook: %s" % _e
+    out = []
+    for _idx, _cell in enumerate(nb.get('cells', [])):
+        _ctype = _cell.get('cell_type', 'unknown')
+        _src = ''.join(_cell.get('source', [])) if isinstance(_cell.get('source'), list) else str(_cell.get('source', ''))
+        out.append('Cell %d (%s):' % (_idx, _ctype))
+        out.append(_src)
+        _outs = _cell.get('outputs', []) or []
+        for _o in _outs:
+            _ot = _o.get('output_type', 'output')
+            _txt = _o.get('text') or (_o.get('data', {}) or {}).get('text/plain') or ''
+            if isinstance(_txt, list):
+                _txt = ''.join(_txt)
+            if _txt:
+                out.append('[%s] %s' % (_ot, _txt))
+        out.append('')
+    _cells_text = '\n'.join(out)
+    if len(_cells_text.encode('utf-8')) > MAX_SIZE_BYTES:
+        return "Notebook content exceeds maximum allowed size (%d bytes). Use Bash with jq to read specific portions." % MAX_SIZE_BYTES
+    return _cells_text or '<system-reminder>Warning: the notebook exists but has no cells.</system-reminder>'
+
+# --- image (FileReadTool.ts:857-883) ---
+if ext in IMAGE_EXT:
+    if not os.path.isfile(full):
+        return "File does not exist. %s" % file_path
+    if os.path.getsize(full) == 0:
+        return "Image file is empty: %s" % file_path
+    with open(full, 'rb') as _f:
+        _buf = _f.read()
+    _b64 = base64.b64encode(_buf).decode('ascii')
+    # partial: Nexa 字符串工具无法注入多模态 image block；返回数据+说明（忠实检测+读取）
+    return "[image:%s media_type=image/%s size=%d bytes base64_len=%d]\n(Multimodal visual injection is a Nexa runtime limitation; base64 payload above. Resize/downsample deferred.)" % (file_path, ext, len(_buf), len(_b64))
+
+# --- pdf (FileReadTool.ts:885-1009) ---
+if ext == 'pdf':
+    if not os.path.isfile(full):
+        return "File does not exist. %s" % file_path
+    # partial: 完整 PDF 文本/page 提取需 poppler (pdfmdtext/pdftoppm)；此处返回说明
+    if pages:
+        return "[pdf:%s pages=%s] PDF page extraction requires poppler-utils (pdftoppm). Max %d pages/request. Install: brew install poppler / apt-get install poppler-utils." % (file_path, pages, PDF_MAX_PAGES)
+    return "[pdf:%s] Full PDF read requires poppler-utils. Use the pages parameter to read specific page ranges (e.g. pages: \"1-5\", max %d pages)." % (file_path, PDF_MAX_PAGES)
+
+# --- binary 拒绝 (FileReadTool.ts:467-480) ---
+if _ext_lower in BINARY_EXT:
+    return "This tool cannot read binary files. The file appears to be a binary %s file. Please use appropriate tools for binary file analysis." % _ext_lower
+
+# --- text (FileReadTool.ts:1011-1078) ---
+if not os.path.isfile(full):
+    return "File does not exist. %s" % file_path
+
+_total_bytes = os.path.getsize(full)
+# maxSizeBytes 门：门的是【整个文件大小】(非切片)；仅当未指定 limit 时强制 (limits.ts:9-13, FileReadTool.ts:1018)
+if _lim is None and _total_bytes > MAX_SIZE_BYTES:
+    return "File content (%d bytes) exceeds maximum allowed size (%d bytes). Use offset and limit parameters to read specific portions of the file, or use Grep/Glob to search for specific content." % (_total_bytes, MAX_SIZE_BYTES)
+
+# 0 字节文件 → "contents are empty" (FileReadTool.ts:698-699)
+if _total_bytes == 0:
+    return '<system-reminder>Warning: the file exists but the contents are empty.</system-reminder>'
+
+with open(full, 'r', encoding='utf-8', errors='replace') as _f:
+    _all_lines = _f.read().split('\n')
+# 若 read 末尾带 \n，split 会多一个空串，与 CC 一致处理
+_total_lines = len(_all_lines)
+
+# offset 1-based → 0-based start (FileReadTool.ts:1012 lineOffset = offset-1)
+_start = max(0, _off - 1)
+if _lim is not None:
+    _slice = _all_lines[_start:_start + _lim]
+else:
+    _slice = _all_lines[_start:]
+_content = '\n'.join(_slice)
+
+# maxTokens 门：粗估 (4 bytes/token) (FileReadTool.ts:745-763)
+if len(_content.encode('utf-8')) > MAX_TOKENS * 4:
+    return "File content (estimated %d tokens) exceeds maximum allowed tokens (%d). Use offset and limit parameters to read specific portions of the file, or use Grep to search for specific content." % (len(_content.encode('utf-8')) // 4, MAX_TOKENS)
+
+# 空内容 / offset 超出 (FileReadTool.ts:690-701)
+if not _content:
+    if _total_lines == 0:
+        return '<system-reminder>Warning: the file exists but the contents are empty.</system-reminder>'
+    return '<system-reminder>Warning: the file exists but is shorter than the provided offset (%d). The file has %d lines.</system-reminder>' % (_off, _total_lines)
+
+# addLineNumbers: cat -n 格式 — padStart(6)+'→'；>=6 位无 pad (file.ts:310-318)
+# 记录 readFileState 供 Edit/Write staleness 检查 (FileEditTool.ts:437-451 / FileWriteTool)
+globals().setdefault('_CCPORT_READ_STATE', {})[full] = {
+    'mtime': os.path.getmtime(full), 'offset': _off, 'limit': _lim, 'content': _content}
+_lines = _content.split('\n')
+_numbered = []
+for _i, _line in enumerate(_lines):
+    _n = _start + _i + 1
+    _ns = str(_n)
+    if len(_ns) >= 6:
+        _numbered.append('%s→%s' % (_ns, _line))
+    else:
+        _numbered.append('%s→%s' % (_ns.rjust(6), _line))
+return '\n'.join(_numbered)
+"""
+}

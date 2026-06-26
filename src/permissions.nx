@@ -1,0 +1,208 @@
+// =============================================================================
+// permissions.nx — 真权限模型核心 + modes（Phase 1c + Phase 2 修复②③ + Phase 5 bypass/auto+多源+chr(92)重写）
+// -----------------------------------------------------------------------------
+// Ported from (唯一翻译源 refs/claude-code-ts):
+//   - src/utils/permissions/permissionsLoader.ts:46-114,120-133 → 规则加载
+//   - src/utils/permissions/shellRuleMatching.ts:43-184 → exact/prefix`:*`/wildcard`*` 匹配
+//   - src/utils/permissions/permissionSetup.ts → deny>allow>ask 决策 + PermissionMode
+//   - src/utils/permissions/modes (default/plan/bypass/auto) — plan 只读；bypass 全放行；auto 自动批准 ask
+// 忠实度：partial（核心规则匹配 + deny>allow>ask + 4 mode(default/plan/bypass/auto) + 多 settings
+//   源合并(user/project/local)；未含：acceptEdits mode、per-tool formatToolInput、
+//   bashSecurity/readOnlyValidation/pathValidation 的 5000+ 行细分规则、sandbox）。
+//
+// Phase 2 修复：
+//   ② 钩子幂等：改查 TOOL_HOOKS['PreToolUse'] 是否已含 cb（不再用函数属性）。
+//   ③ modes：补 default（Read 默认 allow；Write/Edit/Bash/NotebookEdit deny>allow>ask）+ plan
+//      （只读 Read/Glob/Grep allow；改动类 Edit/Write/Bash/NotebookEdit 拒）。
+//   规则名用真工具名(Read/Write/Edit/Bash/Glob/Grep/NotebookEdit)。
+//   规则/mode 经 globals()['_CCPORT_RULES']/['_CCPORT_MODE'] 共享（hook 可见运行时变更）。
+// 接入点：P-RUN-2 PreToolUse 钩子（tools_registry.py execute_tool:250 wrapper，真派发 _execute_tool_impl:277→:302）。
+// python! 用单 \n（真换行）。
+// =============================================================================
+
+// 加载规则 + 设 mode + 注册 PreToolUse 钩子。flow 启动时调用一次（幂等）。
+@tool("Initialize CC permission model: load rules + set mode(default/plan) + register P-RUN-2 PreToolUse hook (idempotent)")
+fn init_permissions(): string {
+    python! """
+import os
+import json
+import re
+
+G = globals()
+_rules = {'allow': [], 'deny': [], 'ask': []}
+
+# 多 settings 源合并 (permissionsLoader.ts:120-145 getEnabledSettingSources)：user -> project -> local
+# 低优先级在前（user 先），project/local 后追加；CC 实际按源优先级合并，此处合并全部规则。
+_HOME = os.path.expanduser('~')
+for _p in (os.path.join(_HOME, '.claude', 'settings.json'),                  # userSettings
+           os.path.join(os.getcwd(), '.claude', 'settings.json'),            # projectSettings
+           os.path.join(os.getcwd(), '.claude', 'settings.local.json')):     # localSettings
+    if os.path.isfile(_p):
+        try:
+            with open(_p, 'r', encoding='utf-8') as _f:
+                _data = json.load(_f)
+            _perm = (_data or {}).get('permissions', {}) or {}
+            for _b in ('allow', 'deny', 'ask'):
+                _a = _perm.get(_b)
+                if isinstance(_a, list):
+                    _rules[_b] = _rules[_b] + [str(x) for x in _a]
+        except Exception:
+            pass
+
+# Phase 2/4 默认规则（真工具名）：只读/安全类 allow；改动/网络/子agent 类 ask（→deny>allow>ask）
+if not any(_rules.values()):
+    _rules['allow'] = ['Read', 'Glob', 'Grep', 'TodoWrite', 'EnterPlanMode', 'ExitPlanMode', 'VerifyPlan', 'WebSearch']
+    _rules['ask'] = ['Edit', 'Write', 'Bash', 'NotebookEdit', 'Agent', 'WebFetch', 'MCPTool', 'ListMcpResources', 'ReadMcpResource', 'McpAuth']
+
+G['_CCPORT_RULES'] = _rules
+# mode: default | plan（plan=只读模式，对应 CC plan permission mode）
+G['_CCPORT_MODE'] = os.environ.get('NEXA_PERMISSION_MODE', 'default').strip() or 'default'
+
+# ---- shellRuleMatching.ts:43-184 核心（用 chr(92)/chr(0) 避免反斜杠源码转义歧义）----
+_BS = chr(92)  # 单个反斜杠字符（无需源码转义）
+
+def _extract_prefix(rule):
+    _m = re.match(r'^(.+):\*$', rule)
+    return _m.group(1) if _m else None
+
+def _has_wildcards(p):
+    if p.endswith(':*'):
+        return False
+    for _i, _ch in enumerate(p):
+        if _ch == '*':
+            _bc = 0
+            _j = _i - 1
+            while _j >= 0 and p[_j] == _BS:
+                _bc += 1
+                _j -= 1
+            if _bc % 2 == 0:
+                return True
+    return False
+
+def _match_wildcard(pattern, command):
+    _ST = chr(0) + 'ESCAPED_STAR' + chr(0)
+    _BK = chr(0) + 'ESCAPED_BACKSLASH' + chr(0)
+    _proc = ''
+    _i = 0
+    while _i < len(pattern):
+        _ch = pattern[_i]
+        if _ch == _BS and _i + 1 < len(pattern):
+            _nx = pattern[_i + 1]
+            if _nx == '*':
+                _proc += _ST
+                _i += 2
+                continue
+            elif _nx == _BS:
+                _proc += _BK
+                _i += 2
+                continue
+        _proc += _ch
+        _i += 1
+    # 手动转义 regex 特殊字符（占位符用 chr(0)，非 regex 特殊，安全）
+    _specials = '.+?^${}()|[]'
+    _esc = ''
+    for _c in _proc:
+        _esc += (_BS + _c) if _c in _specials else _c
+    _ww = _esc.replace('*', '.*')
+    _rs = _ww.replace(_ST, _BS + '*').replace(_BK, _BS + _BS)
+    try:
+        return re.match('^' + _rs + '$', command, re.DOTALL) is not None
+    except re.error:
+        return False
+
+def _match_spec(spec, value):
+    _pf = _extract_prefix(spec)
+    if _pf is not None:
+        return value == _pf or value.startswith(_pf + ' ') or value.startswith(_pf)
+    if _has_wildcards(spec):
+        return _match_wildcard(spec, value)
+    return value == spec
+
+def _rule_matches(rule_str, tool, args):
+    rule_str = rule_str.strip()
+    if '(' in rule_str and rule_str.endswith(')'):
+        _rt, _rest = rule_str.split('(', 1)
+        _spec = _rest[:-1]
+    else:
+        _rt, _spec = rule_str, None
+    if _rt != tool:
+        return False
+    if _spec is None:
+        return True
+    _val = args.get('command') or args.get('file_path') or args.get('path') or args.get('notebook_path') or args.get('pattern') or ''
+    # M5 Fix: match against any relevant param value (not just first)
+    _all_vals = [str(v) for v in [args.get('command'), args.get('file_path'), args.get('path'), args.get('notebook_path'), args.get('pattern'), args.get('url'), args.get('tool_name'), args.get('query')] if v]
+    for _v in _all_vals:
+        if _match_spec(_spec, _v):
+            return True
+    return _match_spec(_spec, str(_val))
+
+READONLY = {'Read', 'Glob', 'Grep', 'TodoWrite', 'EnterPlanMode', 'ExitPlanMode', 'VerifyPlan', 'WebSearch'}
+
+def _decide(tool, args):
+    _rules = G.get('_CCPORT_RULES', {'allow': [], 'deny': [], 'ask': []})
+    _mode = G.get('_CCPORT_MODE', 'default')
+    # bypassPermissions 模式：全部放行（sandbox/yolo；对齐 permissionSetup bypassPermissions）
+    if _mode == 'bypass':
+        return 'allow'
+    # plan 模式：只读放行，改动类拒 (permissionSetup plan mode)
+    if _mode == 'plan' and tool not in READONLY:
+        return 'deny_plan'
+    _auto = (_mode == 'auto')  # auto 模式：ask 自动批准（自主运行；permissionSetup auto mode）
+    # deny > allow > ask
+    for _r in _rules['deny']:
+        if _rule_matches(_r, tool, args):
+            return 'deny'
+    for _r in _rules['allow']:
+        if _rule_matches(_r, tool, args):
+            return 'allow'
+    for _r in _rules['ask']:
+        if _rule_matches(_r, tool, args):
+            return 'allow' if _auto else 'ask'
+    # 无规则默认：只读 allow，其余 ask（auto 下也 allow）
+    if tool in READONLY:
+        return 'allow'
+    return 'allow' if _auto else 'ask'
+
+def _pre_tool_use(name, args_dict):
+    _d = _decide(name, args_dict or {})
+    if _d == 'deny_plan':
+        return "[Permission] tool '%s' is not allowed in plan mode (read-only). Use ExitPlanMode or switch to default mode." % name
+    if _d == 'deny':
+        return "[Permission DENIED] tool '%s' blocked by a deny rule (permissions.nx)." % name
+    if _d == 'ask':
+        _short = str(args_dict)[:120]
+        _handler = globals().get('_CCPORT_ASK_HANDLER')
+        if _handler:
+            _ans = _handler(name, _short)  # UI-pluggable：原生 UI 可设此回调弹 y/N modal
+        else:
+            try:
+                _ans = input("  [permission] allow %s? %s (y/N): " % (name, _short)).strip().lower()
+            except EOFError:
+                _ans = 'n'
+        if _ans != 'y':
+            return "[Permission] tool '%s' not approved by user." % name
+    return None
+
+# ② 幂等：查 TOOL_HOOKS['PreToolUse'] 是否已含本钩子（每次 init 新建闭包，按 __name__ 识别，
+#    不依赖闭包同一性、也不用自定义函数属性）
+from src.runtime.tools_registry import register_tool_hook, TOOL_HOOKS
+_already = any(getattr(_cb, '__name__', '') == '_pre_tool_use' for _cb in TOOL_HOOKS.get('PreToolUse', []))
+if not _already:
+    register_tool_hook('PreToolUse', _pre_tool_use)
+    return "[permissions] PreToolUse hook installed (mode=%s). rules: allow=%s deny=%s ask=%s" % (G['_CCPORT_MODE'], _rules['allow'], _rules['deny'], _rules['ask'])
+return "[permissions] hook already installed (mode=%s)." % G['_CCPORT_MODE']
+"""
+}
+
+// 运行时切换 permission mode（default | plan | bypass | auto）
+@tool("Set permission mode: 'default' (rule-based), 'plan' (read-only), 'bypass' (allow all), or 'auto' (auto-approve ask)")
+fn set_permission_mode(mode: string): string {
+    python! """
+_m = (mode or '').strip()
+if _m not in ('default', 'plan', 'bypass', 'auto'):
+    return "[permissions] unknown mode '%s' (use default | plan | bypass | auto)" % mode
+globals()['_CCPORT_MODE'] = _m
+return "[permissions] mode set to '%s'" % _m
+"""
+}

@@ -1,0 +1,68 @@
+// task.nx — TaskCreate / TaskUpdate / TaskList / TaskGet（后台任务系统）
+// Ported from TaskCreateTool/TaskUpdateTool/TaskListTool/TaskGetTool schemas.
+// 任务存 globals()['_CCPORT_TASKS']，状态 pending/in_progress/completed/failed。
+@tool("Create a background task. subject: brief title. description: what needs to be done. activeForm: present continuous form for spinner. metadata_json: optional JSON object of metadata. Returns task ID.")
+fn TaskCreate(subject: string, description: string, activeForm: string, metadata_json: string): string {
+    python! """
+import json, time
+_tasks = globals().setdefault('_CCPORT_TASKS', {})
+_tid = 'task-%d' % (len(_tasks) + 1)
+_meta = {}
+if metadata_json:
+    try: _meta = json.loads(metadata_json)
+    except Exception: pass
+_tasks[_tid] = {
+    'id': _tid, 'subject': subject or '', 'description': description or '',
+    'activeForm': activeForm or '', 'status': 'pending',
+    'metadata': _meta, 'createdAt': time.time()
+}
+return 'Created task %s: %s' % (_tid, subject or description)
+"""
+}
+
+@tool("Update a background task. taskId: the task ID. status: pending|in_progress|completed|failed. Optional: subject, description, activeForm.")
+fn TaskUpdate(taskId: string, status: string, subject: string, description: string, activeForm: string): string {
+    python! """
+_tasks = globals().get('_CCPORT_TASKS', {})
+_t = _tasks.get(taskId)
+if not _t:
+    return 'Task not found: %s' % taskId
+_valid = {'pending', 'in_progress', 'completed', 'failed'}
+if status and status not in _valid:
+    return 'Invalid status: %s (use %s)' % (status, '/'.join(_valid))
+if status:
+    _t['status'] = status
+if subject:
+    _t['subject'] = subject
+if description:
+    _t['description'] = description
+if activeForm:
+    _t['activeForm'] = activeForm
+return 'Updated task %s: status=%s' % (taskId, _t['status'])
+"""
+}
+
+@tool("List all background tasks. Returns task IDs, subjects, and statuses.")
+fn TaskList(): string {
+    python! """
+_tasks = globals().get('_CCPORT_TASKS', {})
+if not _tasks:
+    return 'No tasks.'
+_lines = ['Tasks (%d):' % len(_tasks)]
+for _tid, _t in _tasks.items():
+    _lines.append('  %s [%s] %s' % (_tid, _t.get('status', '?'), _t.get('subject', '')))
+return chr(10).join(_lines)
+"""
+}
+
+@tool("Get details of a specific background task by ID.")
+fn TaskGet(taskId: string): string {
+    python! """
+import json
+_tasks = globals().get('_CCPORT_TASKS', {})
+_t = _tasks.get(taskId)
+if not _t:
+    return 'Task not found: %s' % taskId
+return json.dumps(_t, ensure_ascii=False)
+"""
+}

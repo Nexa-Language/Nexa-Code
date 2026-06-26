@@ -1,0 +1,47 @@
+// =============================================================================
+// query_mapping.nx — turn 循环映射（Phase 1d）
+// -----------------------------------------------------------------------------
+// 映射源（唯一翻译源 refs/claude-code-ts）：
+//   - src/query.ts:460        → 主 turn 循环  `while (true) { ... }`
+//   - src/query.ts:495        → 每轮 stream_request_start（发请求、流式收响应）
+//   - src/query.ts:752-759    → done 信号（stop_reason==='tool_use' 不可靠；流式结束
+//                                后无 tool_use 即结束；有则继续）
+//   - src/query.ts:248,413    → maxTurns（轮数上限）
+//   - src/query.ts:759-760    → streamingToolExecution gate（流式工具执行）
+//   - src/query.ts:558-636    → tool_result 回填 + microcompact（压缩）
+//   - src/query.ts:728        → autocompact（上下文溢出自动压缩/摘要）
+//   - src/QueryEngine.ts      → 会话状态(messages) + 压缩 + 归档（更高层编排）
+//
+// 映射目标（学长 Nexa runtime，已实证 src/runtime/agent.py）：
+//   ┌────────────────────────────────────┬──────────────────────────────────────┐
+//   │ CC query.ts                        │ Nexa runtime (agent.py NexaAgent.run) │
+//   ├────────────────────────────────────┼──────────────────────────────────────┤
+//   │ while(true) 主循环         (460)    │ agent.py:487  while True:             │
+//   │ 发请求 + 流式收响应        (495)    │ agent.py:521/583 chat.completions.create │
+//   │ tool_use 处理→执行→回填→continue   │ agent.py:586 if msg.tool_calls: 派发  │
+//   │   (tool_result 回填)       (558+)   │   execute_tool→append{role:tool}→continue │
+//   │ 无 tool_use → done(结束)   (752)    │ 无 tool_calls → return 最终文本       │
+//   │ maxTurns 轮数上限          (248)    │ agent.py:111 max_tool_calls（强制动收尾） │
+//   │ streamingToolExecution gate (759)   │ P-RUN-1：NEXA_STREAM_TOOLS env 门控带工具流式 │
+//   │ autocompact 上下文压缩     (728)    │ agent.py:347-373 _compact_context(摘要) │
+//   │ QueryEngine.messages 会话状态      │ agent.py:102 self.messages（跨 .run 累积）│
+//   └────────────────────────────────────┴──────────────────────────────────────┘
+//
+// 忠实度结论（1d）：CC 的「turn 循环 / 流式 / tool_call 派发 / 多轮记忆 / 压缩」语义，
+//   NexaAgent.run() 已等价提供——**本移植不手写循环**，直接 Coder.run(prompt) 即对齐
+//   query.ts 的主循环语义。证据：上表逐项；agent.py:487-596 已逐行核对。
+//
+// 差异/适配（partial，登记 PORT_TRACE）：
+//   1. 流式：CC 默认流式 + 流式工具执行(query.ts:759)。Nexa agent.py 流式默认不带工具
+//      （agent.py:514），需 env NEXA_STREAM_TOOLS=1 启用 P-RUN-1 补丁才等价。验证时设此 env。
+//   2. 压缩：CC autocompact 触发于逼近上下文上限；Nexa _compact_context 触发于 user 消息数
+//      超阈值(agent.py:347)。语义同（防溢出），触发条件实现不同——对齐语义，非逐行。
+//   3. 中止/abort：CC 支持 AbortController(query.ts:894 attemptWithFallback + 重试/降级)。
+//      Nexa 无 abort——登记为后续（非 Phase 1 骨架必需）。
+//   4. microcompact(按 tool_use_id 清理, query.ts:558-636)：Nexa 无——后续。
+//
+// 本文件无运行时逻辑（映射为主）。提供空 flow 以使文件可编译。
+// =============================================================================
+flow query_loop_mapping_doc {
+    // 映射文档见文件头注释。turn 循环本体在 main.nx 经 Coder.run() 运行（对齐 query.ts）。
+}

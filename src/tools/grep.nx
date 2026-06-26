@@ -1,0 +1,155 @@
+// =============================================================================
+// grep.nx — Grep 工具（忠实移植 GrepTool，基于 ripgrep）
+// -----------------------------------------------------------------------------
+// Ported from (唯一翻译源 refs/claude-code-ts):
+//   packages/builtin-tools/src/tools/GrepTool/
+//     - prompt.ts:4-17            → 工具名 'Grep' / 描述（ripgrep / 输出模式 / multiline）
+//     - GrepTool.ts:30-87         → inputSchema (pattern/path/glob/output_mode/-B/-A/-C/-n/-i/type/head_limit/offset/multiline)
+//     - GrepTool.ts:101-138       → head_limit 默认 250 (0=unlimited) + offset 分页
+//     - GrepTool.ts:307-396       → call: 构造 rg 参数（--hidden/--max-columns 500/-l/-c/-n/-A/-B/-C/-i/-U/--type/--glob/-e）
+//   src/utils/ripgrep.js          → ripGrep 执行
+// 忠实度：full(参数+输出模式+head_limit/offset 分页)；执行优先调系统 rg，rg 不可用时
+//   降级为 Python re 搜索（注明 fallback）。VCS 目录排除(.git 等)。
+// python! 用单 \n（真换行）。
+// =============================================================================
+
+@tool("Search file contents with a regular expression (ripgrep). Output modes: content (matching lines, supports -A/-B/-C context, -n line numbers, head_limit), files_with_matches (file paths), count (match counts). Defaults to files_with_matches. head_limit defaults to 250, 0 for unlimited.")
+fn Grep(pattern: string, path: string, glob: string, output_mode: string, glob_type: string, context_before: number, context_after: number, context_c: number, show_line_numbers: boolean, case_insensitive: boolean, head_limit: number, offset: number, multiline: boolean): string {
+    python! """
+import os
+import shutil
+import subprocess
+
+DEFAULT_HEAD_LIMIT = 250   # GrepTool.ts:101-104
+
+_pat = pattern or ''
+_search_path = (path or '').strip() or os.getcwd()
+_search_path = os.path.abspath(_search_path)
+_glob = glob or ''
+_type = glob_type or ''
+_mode = (output_mode or 'files_with_matches')
+if _mode not in ('content', 'files_with_matches', 'count'):
+    _mode = 'files_with_matches'
+_B = int(context_before) if context_before else None
+_A = int(context_after) if context_after else None
+_C = int(context_c) if context_c else None
+_n = show_line_numbers if (show_line_numbers not in (None, '', 'false', 'False', False)) else True
+_i = bool(case_insensitive) if (case_insensitive not in (None, '', 'false', 'False')) else False
+_ml = bool(multiline) if (multiline not in (None, '', 'false', 'False')) else False
+try:
+    _hl = DEFAULT_HEAD_LIMIT if (head_limit is None or head_limit == '' or head_limit == 0) else int(head_limit)
+except Exception:
+    _hl = DEFAULT_HEAD_LIMIT
+_off = int(offset) if offset else 0
+
+VCS_DIRS = ['.git', '.hg', '.svn', '.idea', '.vscode', 'node_modules']
+
+def _build_rg():
+    a = ['--hidden']
+    for _d in VCS_DIRS:
+        a += ['--glob', '!' + _d]
+    a += ['--max-columns', '500']
+    if _ml:
+        a += ['-U', '--multiline-dotall']
+    if _i:
+        a += ['-i']
+    if _mode == 'files_with_matches':
+        a += ['-l']
+    elif _mode == 'count':
+        a += ['-c']
+    if _n and _mode == 'content':
+        a += ['-n']
+    if _mode == 'content':
+        if _C is not None:
+            a += ['-C', str(_C)]
+        else:
+            if _B is not None:
+                a += ['-B', str(_B)]
+            if _A is not None:
+                a += ['-A', str(_A)]
+    if _pat.startswith('-'):
+        a += ['-e', _pat]
+    else:
+        a += [_pat]
+    if _type:
+        a += ['--type', _type]
+    if _glob:
+        for _raw in _glob.replace(',', ' ').split():
+            a += ['--glob', _raw]
+    a += [_search_path]
+    return a
+
+# head_limit/offset 分页 (GrepTool.ts:108-126)
+def _paginate(_lines):
+    if _off:
+        _lines = _lines[_off:]
+    if _hl and _hl > 0:
+        _lines = _lines[:_hl]
+    return _lines
+
+_rg = shutil.which('rg')
+if _rg:
+    try:
+        _proc = subprocess.run([_rg] + _build_rg(), capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
+        # M1 Fix: rg returncode 0=matches, 1=no matches, 2+=error（无效正则等）
+        if _proc.returncode not in (0, 1):
+            _err = (_proc.stderr or '').strip()
+            return 'Error: rg failed (exit %d): %s' % (_proc.returncode, _err[:200])
+        _out = (_proc.stdout or '').rstrip('\n')
+        if not _out:
+            return ''
+        _lines = _out.split('\n')
+        _lines = _paginate(_lines)
+        return '\n'.join(_lines)
+    except Exception:
+        pass  # 降级到 Python
+
+# fallback: Python re 搜索（rg 不可用）
+import re
+_flags = re.MULTILINE
+if _i:
+    _flags |= re.IGNORECASE
+try:
+    _regex = re.compile(_pat, _flags)
+except re.error as _e:
+    return 'Invalid regex: %s' % _e
+
+_files = []
+if os.path.isfile(_search_path):
+    _files = [_search_path]
+else:
+    for _root, _dirs, _fnames in os.walk(_search_path):
+        _dirs[:] = [d for d in _dirs if d not in VCS_DIRS]
+        for _fn in _fnames:
+            _files.append(os.path.join(_root, _fn))
+
+_results = []
+for _f in _files:
+    if _glob:
+        import fnmatch as _fnm
+        if not _fnm.fnmatch(os.path.basename(_f), _glob):
+            continue
+    try:
+        with open(_f, 'r', encoding='utf-8', errors='ignore') as _fh:
+            _txt = _fh.read()
+    except Exception:
+        continue
+    _lines = _txt.split('\n')
+    _matches = [(_i2 + 1, _l) for _i2, _l in enumerate(_lines) if _regex.search(_l)]
+    if not _matches:
+        continue
+    if _mode == 'files_with_matches':
+        _results.append(_f)
+    elif _mode == 'count':
+        _results.append('%s:%d' % (_f, len(_matches)))
+    else:
+        for _ln, _l in _matches:
+            if _n:
+                _results.append('%s:%d:%s' % (_f, _ln, _l))
+            else:
+                _results.append('%s:%s' % (_f, _l))
+
+_results = _paginate(_results)
+return '\n'.join(_results)
+"""
+}

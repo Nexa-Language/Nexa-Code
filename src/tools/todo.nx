@@ -1,0 +1,59 @@
+// =============================================================================
+// todo.nx — TodoWrite 工具（忠实移植 TodoWriteTool）
+// -----------------------------------------------------------------------------
+// Ported from (唯一翻译源 refs/claude-code-ts):
+//   packages/builtin-tools/src/tools/TodoWriteTool/
+//     - constants.ts            → 工具名 'TodoWrite'
+//     - prompt.ts:144-180       → 状态(pending/in_progress/completed)+管理规则(至多一个 in_progress)
+//     - TodoWriteTool.ts:13-17  → inputSchema (todos: TodoList)
+//     - TodoWriteTool.ts:58-61  → checkPermissions: 无权限检查 (always allow)
+//     - TodoWriteTool.ts:65-103 → call: 存 appState.todos[key]；allDone→清空
+//     - TodoWriteTool.ts:104-114→ result: "Todos have been modified successfully..."
+// 忠实度：full（todos 解析/状态约束(至多一 in_progress)/全完成清空/结果文案逐字）。
+//   Nexa @tool 参数仅标量 → todos 以 JSON 字符串传入（schema 说明格式）。
+//   todos 存 globals()['_CCPORT_TODOS']（key 按 agentId/session；此处单 agent 用固定 key）。
+//   checkPermissions 无检查 → 经 PreToolUse 钩子时 Read 类放行；权限规则可另配。
+// python! 用单 \n（真换行）。
+// =============================================================================
+
+@tool("Update the todo list for the current session. To be used proactively and often to track progress and pending tasks. Make sure at least one task is in_progress at all times (unless all done). todos is a JSON array; each item is an object with keys content (imperative), activeForm (present-continuous), status (one of pending, in_progress, completed). Status constraint: at most ONE in_progress at a time. When all are completed the list is cleared.")
+fn TodoWrite(todos: string): string {
+    python! """
+import json
+
+try:
+    _todos = json.loads(todos) if isinstance(todos, str) else todos
+except Exception as _e:
+    return 'Invalid todos JSON: %s' % _e
+
+if not isinstance(_todos, list):
+    return 'todos must be a JSON array.'
+
+_VALID = {'pending', 'in_progress', 'completed'}
+_inprog = 0
+for _t in _todos:
+    if not isinstance(_t, dict):
+        return 'Each todo must be an object {content, activeForm, status}.'
+    _st = _t.get('status', 'pending')
+    if _st not in _VALID:
+        return "Invalid status '%s' (use pending/in_progress/completed)." % _st
+    if _st == 'in_progress':
+        _inprog += 1
+    if not _t.get('content'):
+        return 'Each todo requires content.'
+
+# prompt.ts:158 — 至多一个 in_progress
+if _inprog > 1:
+    return 'Invalid: more than one todo is in_progress. Keep exactly ONE in_progress at a time.'
+
+# TodoWriteTool.ts:69-70 — 全完成则清空
+_all_done = all(_t.get('status') == 'completed' for _t in _todos) if _todos else True
+_new = [] if _all_done else _todos
+
+_st = globals().setdefault('_CCPORT_TODOS', {})
+_st['main'] = list(_new)
+
+# TodoWriteTool.ts:105 — 结果文案逐字
+return 'Todos have been modified successfully. Ensure that you continue to use the todo list to track your progress. Please proceed with the current tasks as applicable'
+"""
+}

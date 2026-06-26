@@ -1,0 +1,47 @@
+// skill.nx — Skill 工具（发现/加载技能）
+// Ported from SkillTool/ constants.ts: SKILL_TOOL_NAME='Skill'.
+// 发现 ~/.claude/skills/*/SKILL.md 和 .claude/skills/*/SKILL.md，解析 YAML frontmatter，
+// 按名字加载技能内容注入 agent 上下文。
+@tool("Load and invoke a skill by name. Skills are discovered from ~/.claude/skills/ and .claude/skills/ directories. Each skill has a SKILL.md with YAML frontmatter (name, description). Loading a skill injects its instructions into your context. Use /skill-name as shorthand.")
+fn Skill(skill_name: string): string {
+    python! """
+import os, glob
+_sn = (skill_name or '').strip().lstrip('/')
+if not _sn:
+    return 'Skill name required. Available skills can be found in ~/.claude/skills/ or .claude/skills/.'
+_search_dirs = [
+    os.path.join(os.path.expanduser('~'), '.claude', 'skills'),
+    os.path.join(os.getcwd(), '.claude', 'skills'),
+    os.path.join(os.getcwd(), '.skills'),
+]
+_found = None
+for _sd in _search_dirs:
+    if not os.path.isdir(_sd):
+        continue
+    for _md in glob.glob(os.path.join(_sd, '*', 'SKILL.md')):
+        try:
+            with open(_md, 'r', encoding='utf-8', errors='replace') as _f:
+                _content = _f.read()
+            if ('name: %s' % _sn) in _content or ('name: "%s"' % _sn) in _content:
+                _found = _content
+                break
+            if os.path.basename(os.path.dirname(_md)) == _sn:
+                _found = _content
+                break
+        except Exception:
+            pass
+    if _found:
+        break
+if not _found:
+    _avail = []
+    for _sd in _search_dirs:
+        if os.path.isdir(_sd):
+            for _d in os.listdir(_sd):
+                if os.path.isfile(os.path.join(_sd, _d, 'SKILL.md')):
+                    _avail.append(_d)
+    if _avail:
+        return 'Skill not found: %s. Available: %s' % (_sn, ', '.join(_avail))
+    return 'Skill not found: %s. No skills directory found.' % _sn
+return _found
+"""
+}
