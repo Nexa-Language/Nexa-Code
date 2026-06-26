@@ -115,10 +115,8 @@ from contextlib import redirect_stdout, redirect_stderr
 os.environ['NEXA_QUIET'] = '1'
 os.environ['NEXA_STREAM_TOOLS'] = '1'
 
-_real_out = sys.__stdout__
 def _emit(ev):
-    _real_out.write(json.dumps(ev, ensure_ascii=False) + chr(10))
-    _real_out.flush()
+    print(json.dumps(ev, ensure_ascii=False), flush=True)
 
 # --- P0-3: tool_call_id 计数器 ---
 _tc_id = [0]
@@ -130,19 +128,9 @@ def _next_tcid():
 _cancel = {'flag': False}
 _partial = {'text': ''}
 
-# --- stdin reader 线程（让 cancel 能在 turn 执行时被接收）---
-_stdin_q = _q.Queue()
-def _stdin_reader():
-    for _line in sys.stdin:
-        _stdin_q.put(_line)
-_stdin_t = threading.Thread(target=_stdin_reader, daemon=True)
-_stdin_t.start()
-
+# --- stdin: 直接 readline（不用 reader 线程——Windows pipe 下 for-in-stdin 线程会锁 GIL 阻塞主线程）---
 def _read_stdin(timeout=None):
-    try:
-        return _stdin_q.get(timeout=timeout)
-    except _q.Empty:
-        return None
+    return sys.stdin.readline()
 
 # --- 结构化 tool 事件 hooks（P0-3: tool_call_id + status）---
 from src.runtime.tools_registry import register_tool_hook
