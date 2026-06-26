@@ -39,6 +39,8 @@ export class Engine {
   private proc: ChildProcessWithoutNullStreams;
   private rl: readline.Interface;
   private stderrBuf: string[] = [];
+  private startupTimer: NodeJS.Timeout | null = null;
+  private ready = false;
 
   constructor(
     private onEvent: (e: EngineEvent) => void,
@@ -52,14 +54,19 @@ export class Engine {
       NEXA_PERMISSION_MODE: opts.permissionMode || "default",
       NEXA_QUIET: "1",
       NEXA_STREAM_TOOLS: "1",
+      PYTHONUNBUFFERED: "1",
+      PYTHONIOENCODING: "utf-8",
     } as Record<string, string>;
-    this.proc = spawn(pyExe, ["src/main.py"], {
+    // -u = unbuffered stdout/stderr (critical: main.py takes ~12s to import nexa runtime;
+    // without -u, the `ready` JSON line gets stuck in Python's stdout buffer on Windows)
+    this.proc = spawn(pyExe, ["-u", "src/main.py"], {
       cwd: opts.projectRoot, env, stdio: ["pipe", "pipe", "pipe"],
     });
     this.rl = readline.createInterface({ input: this.proc.stdout });
     this.rl.on("line", (line) => {
       try {
         const ev = JSON.parse(line) as EngineEvent;
+        if (ev.type === "ready") { this.ready = true; if (this.startupTimer) clearTimeout(this.startupTimer); }
         this.onEvent(ev);
       } catch { /* non-JSON ignored */ }
     });
@@ -68,12 +75,20 @@ export class Engine {
       if (text) this.stderrBuf.push(text);
     });
     this.proc.on("exit", (code) => {
+      clearTimeout(this.startupTimer);
       if (code !== 0 && code !== null) {
         const stderr = this.stderrBuf.join("\n").slice(-500);
         this.onEvent({ type: "error", message: `Engine exited (code ${code}): ${stderr}` });
       }
       this.onExit();
     });
+    // Startup timeout: nexa runtime import takes ~30s; allow 90s before giving up
+    this.startupTimer = setTimeout(() => {
+      if (!this.ready) {
+        this.onEvent({ type: "error", message: "Engine startup timeout (90s). The Nexa runtime takes ~30s to import. Check that Python + pydantic are installed." });
+        this.close();
+      }
+    }, 90000);
   }
 
   send(obj: unknown): void { this.proc.stdin.write(JSON.stringify(obj) + "\n"); }
