@@ -40,3 +40,66 @@ Remaining gaps:
 - Need real token/cost counts rather than UI-side estimates.
 - Need additional live CC screenshots for non-bypass permissions and slash popup pixel parity.
 - Startup parity still missing the real CC "What's new" feed, SessionStart hook block, `← for agents`, custom statusline rows, and double Ctrl-C exit prompt.
+
+## Round 5 - Startup, Slash Popup, Statusline, Exit Hints
+
+Focus: close gaps found by live Claude Code v2.1.193 startup/slash comparison.
+
+New evidence:
+
+- Live `claude --dangerously-skip-permissions` showed a trust/config warning before TUI when workspace trust had not been accepted.
+- Real startup card persists after engine readiness and includes a `What's new` column, model/effort/billing, cwd, and a later `SessionStart:startup` block.
+- Real footer/status area can be three rows: custom statusline with model/cwd/git/tokens/cost/time, mode row, bypass permission row with `← for agents`, and effort hint (`/effort`).
+- Typing `/` opened an unboxed floating command list above the input. Rows show command name, source/plugin label such as `(oh-my-claudecode)` or `(superpowers)`, and dim wrapped descriptions.
+- While a command was active, Esc displayed `Esc again to clear`; Ctrl-C during active command eventually exited and printed a `claude --resume <id>` hint.
+
+Changes implemented:
+
+- Startup card now stays visible after engine ready until the first real prompt/command submit, instead of disappearing on `ready`.
+- Added a SessionStart-style context block under the startup card.
+- Changed the startup right column from generic recent activity to a `What's new` feed.
+- Footer is now multi-row and closer to the observed custom CC statusline: model/cwd/tokens/cost/time, mode row, permission row, `← for agents`, and `/effort` hint.
+- Slash overlay is now an unboxed floating list with command name, source column, and description, matching the observed CC list more closely.
+- Added idle Ctrl-C double-confirm intent in Ink (`Press Ctrl-C again to exit`) where raw input reaches the app.
+- Added busy Esc two-step messaging: first Esc warns, second clears locally.
+
+Verification:
+
+- `cd ui-ink && bunx tsc --noEmit` passed.
+- `cd ui-ink && bun start` rendered the updated startup card and multi-row statusline without crashing.
+
+Remaining gaps:
+
+- Real plugin/skill slash commands are not discoverable by UI without a command registry/event from the engine.
+- Workspace trust warnings and config warning blocks are not surfaced through the engine JSON protocol.
+- Active command interruption/resume IDs require engine/session support.
+- Port statusline still estimates tokens/cost/time locally and does not know git branch or effort.
+
+## Round 6 - Project Root and Git Statusline Alignment
+
+Focus: remove the visible mismatch where the port shows `ui-ink/` as the working directory while real Claude Code presents the project root and git context.
+
+New evidence:
+
+- Live Claude Code v2.1.193 statusline showed project-oriented context rather than UI implementation cwd: project name/path, git branch with clean/dirty marker, model, token/cost/time fields, and permission/effort rows.
+- The previous port startup/statusline used `process.cwd()`, so running from `ui-ink/` exposed the implementation folder instead of `D:\code\nexa\claude-code-port`.
+
+Changes implemented:
+
+- Added UI-only project metadata helpers in `ui-ink/src/index.tsx`.
+- Startup card now displays the real project root derived from `import.meta.dir` (`claude-code-port`) rather than the `ui-ink` process cwd.
+- Footer first row now mirrors the CC statusline shape more closely: model, project name, git branch, clean/dirty marker, token estimate, cost placeholder, and elapsed time.
+- Footer permission row now keeps the shortened full project path as secondary context, closer to the observed CC custom statusline layout.
+- Git branch and dirty state refresh every 10 seconds and fail closed; if git is unavailable, the UI simply omits the git segment instead of showing an error.
+- After smoke testing at 80 columns, the first statusline row was compacted to avoid terminal wrapping: `model | project+git | tokens | elapsed`.
+
+Verification:
+
+- `cd ui-ink && bunx tsc --noEmit` passed.
+- `cd ui-ink && bun start` smoke rendered the startup card and compact project/git statusline without crashing.
+
+Remaining gaps:
+
+- Token and cost remain estimates/placeholders until the engine emits real usage data.
+- Effort/model source still needs engine/statusline protocol support for full parity.
+- Exact CC workspace trust/config warning blocks still need engine events.

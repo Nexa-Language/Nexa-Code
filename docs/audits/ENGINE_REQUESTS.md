@@ -42,3 +42,20 @@ The UI layer did not modify `src/*.nx` or `src/tools/*.nx`. These requests descr
 
 - Provide a UI/engine contract for idle Ctrl-C behavior: first Ctrl-C shows "Press Ctrl-C again to exit", second exits.
 - Ink currently uses `/exit`/process interrupt for smoke testing and does not model the two-step idle exit confirmation.
+
+## P1 - Slash Command Registry
+
+- Expose a structured command registry event containing command name, source/plugin label, description, aliases, and availability.
+- Real Claude Code slash popup includes plugin/skill commands such as `/oh-my-claudecode:ralplan`, source labels like `(superpowers)`, and wrapped descriptions.
+- Current UI can only list the static commands in `ui-ink/src/commands.ts`.
+
+## P1 - Trust And Config Warnings
+
+- Surface workspace trust/config warnings as structured startup events before the prompt.
+- Real Claude Code printed ignored permission entries and unknown permission ask rules before drawing the TUI.
+- Current UI has no way to know these warnings unless the engine forwards them.
+
+## P2 - Active Interrupt / Resume IDs
+
+- When a running command/turn is interrupted, emit whether the turn was cancelled, cleared, or resumable.
+- Include a resume id when available, matching real Claude Code's `claude --resume <id>` hint.

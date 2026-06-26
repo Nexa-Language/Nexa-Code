@@ -6,6 +6,7 @@ import { render, Box, Text, useApp, useInput, useStdin } from "ink";
 import TextInput from "ink-text-input";
 import Spinner from "ink-spinner";
 import * as path from "node:path";
+import { execSync } from "node:child_process";
 import { Engine, EngineEvent } from "./engine.ts";
 import { COMMANDS } from "./commands.ts";
 import type { Command } from "./commands.ts";
@@ -24,7 +25,9 @@ const HOOK = "⎿";
 const TEARDROP = "✻";
 const META_DIR = (import.meta as any).dir as string;
 const PROJECT_ROOT = path.resolve(META_DIR, "..", "..");
-const CWD_FULL = process.cwd().replace(process.env.HOME || process.env.USERPROFILE || "", "~");
+const HOME_DIR = process.env.HOME || process.env.USERPROFILE || "";
+const PROJECT_NAME = path.basename(PROJECT_ROOT);
+const PROJECT_DISPLAY = PROJECT_ROOT.replace(HOME_DIR, "~");
 
 type ToolStatus = "waiting" | "running" | "resolved" | "error" | "denied";
 type Entry =
@@ -117,6 +120,37 @@ function commandMatches(input: string): Command[] {
     .sort((a, b) => b.score - a.score || a.command.name.localeCompare(b.command.name))
     .map((x) => x.command)
     .slice(0, 9);
+}
+
+function formatDuration(totalSeconds: number): string {
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m${seconds}s`;
+}
+
+function readGitBranch(): string {
+  try {
+    return execSync("git rev-parse --abbrev-ref HEAD", {
+      cwd: PROJECT_ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return "";
+  }
+}
+
+function readGitDirty(): boolean {
+  try {
+    return execSync("git status --porcelain", {
+      cwd: PROJECT_ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim().length > 0;
+  } catch {
+    return false;
+  }
 }
 
 function InlineText({ text, color }: { text: string; color?: string }) {
@@ -229,9 +263,25 @@ function StartupCard({ model, cwd }: { model: string; cwd: string }) {
         <Text dimColor>Run /init to create a CLAUDE.md file with instructions</Text>
         <Text dimColor>Use / for commands, Shift+Tab for permission mode</Text>
         <Text> </Text>
-        <Text color={ORANGE} bold>Recent activity</Text>
-        <Text dimColor>No recent activity in this UI shell</Text>
+        <Text color={ORANGE} bold>What's new</Text>
+        <Text dimColor>Added /rewind-style recovery surface</Text>
+        <Text dimColor>Improved tool and permission rendering</Text>
+        <Text dimColor>/release-notes for more</Text>
       </Box>
+    </Box>
+  );
+}
+
+function StartupContextBlock() {
+  return (
+    <Box flexDirection="column" paddingX={2} marginBottom={1}>
+      <Text>
+        <Text color={DIM}>{HOOK}  SessionStart:startup says: </Text>
+        <Text color={BLUE} bold>[claude-code-port] recent context</Text>
+      </Text>
+      <Text color={DIM}>   ────────────────────────────────────────────────────────────</Text>
+      <Text dimColor>   No previous sessions found for this project yet.</Text>
+      <Text color={BLUE}>   View Observations Live @ http://localhost:37777</Text>
     </Box>
   );
 }
@@ -323,15 +373,17 @@ function MessageLog({ entries, streaming }: { entries: Entry[]; streaming: strin
 function SlashOverlay({ matches, selected }: { matches: Command[]; selected: number }) {
   if (matches.length === 0) return null;
   return (
-    <Box flexDirection="column" borderStyle="single" borderColor={BLUE} paddingX={1} marginX={1}>
+    <Box flexDirection="column" paddingX={1} marginX={1}>
       {matches.map((c, i) => (
-        <Box key={c.name}>
-          <Text color={i === selected ? ORANGE : DIM}>{i === selected ? "▶ " : "  "}</Text>
-          <Text bold color={i === selected ? ORANGE : BLUE}>{c.name.padEnd(13)}</Text>
-          <Text color={i === selected ? GREY : DIM}>{truncateMiddle(c.desc, Math.max(24, terminalWidth() - 22))}</Text>
+        <Box key={c.name} flexDirection="column">
+          <Text>
+            <Text color={i === selected ? ORANGE : DIM}>{c.name.padEnd(18)}</Text>
+            <Text color={DIM}>{(c.source || "builtin").padEnd(14)}</Text>
+            <Text color={i === selected ? GREY : DIM}>{truncateMiddle(c.desc, Math.max(24, terminalWidth() - 36))}</Text>
+          </Text>
         </Box>
       ))}
-      <Text dimColor>  ↑/↓ select · tab complete · enter run</Text>
+      <Text dimColor>↑/↓ select · tab complete · exact command runs as typed</Text>
     </Box>
   );
 }
@@ -410,30 +462,52 @@ function FooterBar({
   mode,
   model,
   cwd,
+  projectName,
+  gitBranch,
+  gitDirty,
   busy,
   tokensIn,
   tokensOut,
   active,
+  sessionSeconds,
+  exitArmed,
 }: {
   mode: PermMode;
   model: string;
   cwd: string;
+  projectName: string;
+  gitBranch: string;
+  gitDirty: boolean;
   busy: boolean;
   tokensIn: number;
   tokensOut: number;
   active: string;
+  sessionSeconds: number;
+  exitArmed: boolean;
 }) {
+  const footerWidth = Math.max(60, terminalWidth() - 2);
+  const gitText = gitBranch ? ` | ${gitBranch}${gitDirty ? " *" : " ✓"}` : "";
+  const projectText = truncateMiddle(`${projectName}${gitText}`, Math.max(18, footerWidth - 48));
+  const pathText = truncateMiddle(cwd, Math.max(12, footerWidth - 52));
   return (
-    <Box paddingX={1}>
-      <Text color={MODE_COLORS[mode]} bold>{mode === "bypass" ? "⏵⏵ bypass permissions on" : mode}</Text>
-      <Text dimColor> (shift+tab to cycle)</Text>
-      <Text dimColor>  </Text>
-      <Text color={BLUE}>{model}</Text>
-      <Text dimColor> {cwd}</Text>
-      <Text dimColor>  </Text>
-      <Text color={GREY}>↓{tokensIn} ↑{tokensOut}</Text>
-      {busy && <Text color={ORANGE}>  <Spinner type="dots" /> {active || "working"}</Text>}
-      {!busy && <Text dimColor>  ○ idle</Text>}
+    <Box paddingX={1} flexDirection="column">
+      {exitArmed && <Text color={WARN}>Press Ctrl-C again to exit</Text>}
+      <Text>
+        <Text color={BLUE}>🤖 {model}</Text>
+        <Text dimColor> | 📁 {projectText}</Text>
+        <Text dimColor> | ⚡ {tokensIn}/{tokensOut}</Text>
+        <Text dimColor> | ⏱ {formatDuration(sessionSeconds)}</Text>
+      </Text>
+      <Text>
+        <Text color={MODE_COLORS[mode]} bold>Ⓜ️ {mode}</Text>
+        {busy && <Text color={ORANGE}>  <Spinner type="dots" /> {active || "working"}</Text>}
+        {!busy && <Text dimColor>  ○ idle</Text>}
+      </Text>
+      <Text>
+        <Text color={MODE_COLORS[mode]} bold>{mode === "bypass" ? "⏵⏵ bypass permissions on" : `${mode} permissions`}</Text>
+        <Text dimColor> (shift+tab to cycle) · {pathText} · ← for agents</Text>
+        <Text dimColor>                                           ◉ xhigh · /effort</Text>
+      </Text>
     </Box>
   );
 }
@@ -455,8 +529,16 @@ function App() {
   const [tokensIn, setTokensIn] = useState(0);
   const [tokensOut, setTokensOut] = useState(0);
   const [slashSelected, setSlashSelected] = useState(0);
+  const [engineReady, setEngineReady] = useState(false);
+  const [sessionSeconds, setSessionSeconds] = useState(0);
+  const [exitArmed, setExitArmed] = useState(false);
+  const [escapeArmed, setEscapeArmed] = useState(false);
+  const [gitBranch, setGitBranch] = useState("");
+  const [gitDirty, setGitDirty] = useState(false);
   const nextToolId = useRef(1);
   const turnStartRef = useRef<number>(0);
+  const appStartRef = useRef<number>(Date.now());
+  const exitTimerRef = useRef<NodeJS.Timeout | null>(null);
   const engineRef = useRef<Engine | null>(null);
 
   const showSlash = input.startsWith("/") && !input.includes(" ") && !busy && !permission;
@@ -466,6 +548,16 @@ function App() {
     setSlashSelected(0);
   }, [input]);
 
+  useEffect(() => {
+    const refreshGit = () => {
+      setGitBranch(readGitBranch());
+      setGitDirty(readGitDirty());
+    };
+    refreshGit();
+    const timer = setInterval(refreshGit, 10000);
+    return () => clearInterval(timer);
+  }, []);
+
   const appendSystem = useCallback((text: string, tone: "info" | "success" | "warning" = "info") => {
     setEntries((es) => [...es, { kind: "system", text, tone }]);
   }, []);
@@ -474,7 +566,7 @@ function App() {
     switch (e.type) {
       case "ready":
         setModel(e.model);
-        setShowStartup(false);
+        setEngineReady(true);
         break;
       case "assistant_token":
         setStreaming((s) => s + e.content);
@@ -566,6 +658,11 @@ function App() {
   }, [handleEvent, exit]);
 
   useEffect(() => {
+    const timer = setInterval(() => setSessionSeconds(Math.floor((Date.now() - appStartRef.current) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     if (!busy) return;
     if (turnStartRef.current === 0) turnStartRef.current = Date.now();
     const timer = setInterval(() => setElapsed(Math.floor((Date.now() - turnStartRef.current) / 1000)), 1000);
@@ -588,6 +685,17 @@ function App() {
 
   useInput((rawInput, key) => {
     if (permission) return;
+    if (!busy && (rawInput === "\u0003" || (key.ctrl && rawInput === "c"))) {
+      if (exitArmed) {
+        engineRef.current?.sendExit();
+        setTimeout(() => exit(), 100);
+        return;
+      }
+      setExitArmed(true);
+      if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = setTimeout(() => setExitArmed(false), 2500);
+      return;
+    }
     if (showSlash && slashMatches.length > 0) {
       if (key.upArrow) {
         setSlashSelected((i) => (i <= 0 ? slashMatches.length - 1 : i - 1));
@@ -611,6 +719,13 @@ function App() {
       return;
     }
     if (busy && key.escape) {
+      if (!escapeArmed) {
+        setEscapeArmed(true);
+        setEntries((es) => [...es, { kind: "system", tone: "warning", text: "Esc again to clear. Engine-side cancellation requires protocol support." }]);
+        setTimeout(() => setEscapeArmed(false), 1800);
+        return;
+      }
+      setEscapeArmed(false);
       setBusy(false);
       setThinkPhase("");
       setThinkTool("");
@@ -640,6 +755,8 @@ function App() {
     }
     setInput("");
     if (!v) return;
+    setShowStartup(false);
+    setExitArmed(false);
     const eng = engineRef.current;
     if (v === "exit" || v === "/exit" || v === "/quit") {
       eng?.sendExit();
@@ -656,18 +773,29 @@ function App() {
     else eng?.sendMessage(v);
   };
 
-  const cwdShort = truncateMiddle(CWD_FULL, Math.max(14, terminalWidth() - 72));
+  const cwdShort = truncateMiddle(PROJECT_DISPLAY, Math.max(14, terminalWidth() - 86));
   const active = thinkTool || (thinkPhase ? thinkPhase : busy ? "thinking" : "");
 
   if (showStartup) {
     return (
       <Box flexDirection="column">
-        <StartupCard model={model} cwd={CWD_FULL} />
+        <StartupCard model={model} cwd={PROJECT_DISPLAY} />
+        {engineReady && <StartupContextBlock />}
+        {showSlash && <SlashOverlay matches={slashMatches} selected={Math.min(slashSelected, Math.max(0, slashMatches.length - 1))} />}
         <Box borderStyle="single" borderColor={DIM} paddingX={1}>
           <Text color={ORANGE}>&gt; </Text>
-          <Text dimColor>Loading engine…</Text>
+          {engineReady && isRawModeSupported ? (
+            <TextInput
+              value={input}
+              onChange={setInput}
+              onSubmit={submit}
+              placeholder={"Try \"create a util…\" or / for commands"}
+            />
+          ) : (
+            <Text dimColor>Loading engine…</Text>
+          )}
         </Box>
-        <FooterBar mode={permMode} model={model} cwd={cwdShort} busy={false} tokensIn={0} tokensOut={0} active="" />
+        <FooterBar mode={permMode} model={model} cwd={cwdShort} projectName={PROJECT_NAME} gitBranch={gitBranch} gitDirty={gitDirty} busy={false} tokensIn={0} tokensOut={0} active="" sessionSeconds={sessionSeconds} exitArmed={exitArmed} />
       </Box>
     );
   }
@@ -705,7 +833,7 @@ function App() {
           <Text dimColor>(run in a real terminal)</Text>
         )}
       </Box>
-      <FooterBar mode={permMode} model={model} cwd={cwdShort} busy={busy} tokensIn={tokensIn} tokensOut={tokensOut} active={active} />
+      <FooterBar mode={permMode} model={model} cwd={cwdShort} projectName={PROJECT_NAME} gitBranch={gitBranch} gitDirty={gitDirty} busy={busy} tokensIn={tokensIn} tokensOut={tokensOut} active={active} sessionSeconds={sessionSeconds} exitArmed={exitArmed} />
     </Box>
   );
 }
