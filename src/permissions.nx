@@ -49,6 +49,33 @@ for _p in (os.path.join(_HOME, '.claude', 'settings.json'),                  # u
         except Exception:
             pass
 
+# P2-6: DANGEROUS_BASH_PATTERNS（CC dangerousPatterns.ts）— auto 模式下这些前缀危险（可执行任意代码）
+_DANGEROUS_BASH_PREFIXES = {
+    'python', 'python3', 'python2', 'node', 'deno', 'tsx', 'ruby', 'perl', 'php', 'lua',
+    'npx', 'bunx', 'npm run', 'yarn run', 'pnpm run', 'bun run',
+    'bash', 'sh', 'zsh', 'fish', 'eval', 'exec', 'env', 'xargs', 'sudo', 'ssh',
+}
+# auto 模式下 strip 危险 allow 规则（对齐 CC isDangerousBashPermission）
+if G.get('_CCPORT_MODE') == 'auto':
+    _rules['allow'] = [r for r in _rules.get('allow', []) if not any(
+        r.lower() == p or r.lower() == p + ':*' or r.lower() == p + '*'
+        for p in _DANGEROUS_BASH_PREFIXES
+    )]
+
+# P2-6: per-tool formatToolInput（CC permissionExplainer.ts:87）— 按工具类型格式化权限展示参数
+def _format_tool_input(tool, args):
+    if tool == 'Bash':
+        return args.get('command', '')[:200]
+    elif tool in ('Read', 'Write', 'Edit', 'NotebookEdit'):
+        return args.get('file_path', '')[:200]
+    elif tool == 'Grep':
+        return 'pattern=%s path=%s' % (args.get('pattern', '')[:60], args.get('path', '')[:60])
+    elif tool == 'Glob':
+        return 'pattern=%s path=%s' % (args.get('pattern', '')[:60], args.get('path', '')[:60])
+    elif tool == 'WebFetch':
+        return 'url=%s' % args.get('url', '')[:100]
+    return str(args)[:200]
+
 # Phase 2/4 默认规则（真工具名）：只读/安全类 allow；改动/网络/子agent 类 ask（→deny>allow>ask）
 if not any(_rules.values()):
     _rules['allow'] = ['Read', 'Glob', 'Grep', 'TodoWrite', 'EnterPlanMode', 'ExitPlanMode', 'VerifyPlan', 'WebSearch']

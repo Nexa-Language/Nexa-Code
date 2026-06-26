@@ -286,15 +286,28 @@ function StartupContextBlock() {
   );
 }
 
+function normalizedResultLines(result: string): string[] {
+  const normalized = result.replace(/\r\n/g, "\n").replace(/\n$/, "");
+  return normalized ? normalized.split("\n") : [];
+}
+
+function truncateResultLine(line: string): string {
+  const maxWidth = Math.max(24, terminalWidth() - 8);
+  return line.length > maxWidth ? line.slice(0, maxWidth - 1) + "…" : line;
+}
+
 function ToolView({ entry }: { entry: Extract<Entry, { kind: "tool" }> }) {
   const args = argEntries(entry.args);
   const argSummary = args.map(([k, v]) => `${k}: ${v}`).join(", ");
   const result = entry.result || "";
-  const resultLines = result.split("\n");
+  const resultLines = normalizedResultLines(result);
   const foldAt = 6;
-  const isLong = resultLines.length > foldAt || result.length > 900;
+  const isLong = resultLines.length > foldAt || result.length > 900 || resultLines.some((line) => line.length > terminalWidth() * 2);
   const visible = entry.expanded || !isLong ? resultLines : resultLines.slice(0, foldAt);
+  const hiddenLines = Math.max(0, resultLines.length - visible.length);
+  const hiddenSummary = hiddenLines > 0 ? `+${hiddenLines} lines` : "long output";
   const color = entry.status === "error" ? RED : entry.status === "denied" ? WARN : BLUE;
+  const resultColor = entry.status === "error" ? RED : entry.status === "denied" ? WARN : DIM;
   const statusLabel =
     entry.status === "waiting" ? "Waiting…" :
     entry.status === "running" ? "Running…" :
@@ -313,16 +326,21 @@ function ToolView({ entry }: { entry: Extract<Entry, { kind: "tool" }> }) {
           <Text color={DIM}>{HOOK} <Text color={ORANGE}><Spinner type="dots" /></Text> {statusLabel || "Running…"}</Text>
         ) : (
           <>
-            {visible.map((line, i) => (
-              <Text key={i} color={entry.status === "error" ? RED : DIM}>
-                {i === 0 ? `${HOOK} ` : "  "}
-                {line.length > terminalWidth() - 6 ? line.slice(0, terminalWidth() - 7) + "…" : line || " "}
-              </Text>
-            ))}
+            {statusLabel && <Text color={resultColor}>{HOOK} {statusLabel}</Text>}
+            {visible.length === 0 && !statusLabel && <Text color={DIM}>{HOOK} (No content)</Text>}
+            {visible.map((line, i) => {
+              const prefix = i === 0 && !statusLabel ? `${HOOK} ` : "  ";
+              return (
+                <Text key={i} color={resultColor}>
+                  {prefix}
+                  {truncateResultLine(line) || " "}
+                </Text>
+              );
+            })}
             {isLong && !entry.expanded && (
-              <Text color={DIM} italic>  … {resultLines.length - foldAt} more lines ({result.length} chars). Press x to expand latest tool.</Text>
+              <Text color={DIM} italic>  … {hiddenSummary} ({result.length} chars, ctrl+o to expand)</Text>
             )}
-            {isLong && entry.expanded && <Text color={DIM} italic>  showing full result. Press x to fold latest tool.</Text>}
+            {isLong && entry.expanded && <Text color={DIM} italic>  showing full result ({resultLines.length} lines, ctrl+o to collapse)</Text>}
           </>
         )}
       </Box>
@@ -815,7 +833,9 @@ function App() {
       setEntries((es) => [...es, { kind: "system", tone: "warning", text: "Interrupted locally. Engine-side cancellation requires protocol support." }]);
       return;
     }
-    if (!input && rawInput === "x") toggleLatestTool();
+    if (!input && (rawInput === "x" || rawInput === "\u000f" || (key.ctrl && rawInput.toLowerCase() === "o"))) {
+      toggleLatestTool();
+    }
   });
 
   const submit = (value: string) => {
