@@ -168,6 +168,65 @@ def _tool_post(name, args_dict, result):
 register_tool_hook('PreToolUse', _tool_pre)
 register_tool_hook('PostToolUse', _tool_post)
 
+# P0: Token Usage 提取——monkey-patch Coder._get_client 包装 create() 截获 usage
+_usage_acc = {'input': 0, 'output': 0, 'total': 0, 'last_input': 0, 'last_output': 0, 'last_total': 0}
+_orig_get_client = Coder._get_client
+class _UsageWrapper:
+    def __init__(self, _real):
+        self._real = _real
+        self.chat = _UsageChatWrapper(_real.chat)
+class _UsageChatWrapper:
+    def __init__(self, _real):
+        self._real = _real
+        self.completions = _UsageCompletionsWrapper(_real.completions)
+class _UsageCompletionsWrapper:
+    def __init__(self, _real):
+        self._real = _real
+    def create(self, **kw):
+        _is_stream = kw.get('stream', False)
+        if _is_stream:
+            kw.setdefault('stream_options', {})
+            if isinstance(kw['stream_options'], dict):
+                kw['stream_options']['include_usage'] = True
+        _resp = self._real.create(**kw)
+        try:
+            if _is_stream:
+                # streaming: usage on last chunk — wrap generator to capture
+                _gen = _resp
+                def _wrap_stream(_g):
+                    _last = None
+                    for _chunk in _g:
+                        _last = _chunk
+                        yield _chunk
+                    if _last:
+                        _u = getattr(_last, 'usage', None)
+                        if not _u:
+                            try:
+                                _u = getattr(getattr(_last, 'x_groq', None) or getattr(_last, '_parsed_usage', None), 'usage', None) or _last.model_dump().get('usage')
+                            except Exception:
+                                _u = None
+                        if _u:
+                            _usage_acc['last_input'] = getattr(_u, 'prompt_tokens', 0) or (getattr(_u, 'prompt_tokens', 0) if isinstance(_u, dict) else 0) or 0
+                            _usage_acc['last_output'] = getattr(_u, 'completion_tokens', 0) or 0
+                            _usage_acc['last_total'] = getattr(_u, 'total_tokens', 0) or 0
+                            _usage_acc['input'] += _usage_acc['last_input']
+                            _usage_acc['output'] += _usage_acc['last_output']
+                            _usage_acc['total'] += _usage_acc['last_total']
+                return _wrap_stream(_gen)
+            else:
+                _u = getattr(_resp, 'usage', None)
+                if _u:
+                    _usage_acc['last_input'] = getattr(_u, 'prompt_tokens', 0) or 0
+                    _usage_acc['last_output'] = getattr(_u, 'completion_tokens', 0) or 0
+                    _usage_acc['last_total'] = getattr(_u, 'total_tokens', 0) or 0
+                    _usage_acc['input'] += _usage_acc['last_input']
+                    _usage_acc['output'] += _usage_acc['last_output']
+                    _usage_acc['total'] += _usage_acc['last_total']
+        except Exception:
+            pass
+        return _resp
+Coder._get_client = lambda: _UsageWrapper(_orig_get_client())
+
 init_permissions()
 seed_context(build_user_context('glm-5.1'))
 
@@ -301,6 +360,7 @@ while True:
                     with redirect_stdout(_TokenStream()), redirect_stderr(_StderrStream()):
                         _rep = run_one_turn(_out[len('__AS_PROMPT__:'):])
                     _emit({'type': 'turn_status', 'phase': 'idle'})
+                    _emit({'type': 'usage', 'input': _usage_acc['last_input'], 'output': _usage_acc['last_output'], 'total': _usage_acc['last_total'], 'cumulative_input': _usage_acc['input'], 'cumulative_output': _usage_acc['output'], 'estimated': False})
                     _emit({'type': 'done', 'reply': _rep})
                 except KeyboardInterrupt:
                     _emit({'type': 'done', 'reply': _partial['text'] or '(interrupted)'})
@@ -308,6 +368,18 @@ while True:
                     _emit({'type': 'error', 'message': str(_e)})
             else:
                 _emit({'type': 'command_result', 'name': _name, 'result': _out})
+                # P1: 结构化事件——让 UI 渲染 picker
+                if _name in ('/resume', '/rewind'):
+                    try:
+                        _sl = list_sessions()
+                        _emit({'type': 'session_list', 'sessions': [{'path': _l, 'msg_count': 0} for _l in _sl.split(chr(10)) if _l.strip() and 'No saved' not in _sl]})
+                    except Exception:
+                        pass
+                elif _name in ('/model',):
+                    _emit({'type': 'model_list', 'current': Coder.model, 'models': [{'name': Coder.model, 'available': True}]})
+                elif _name in ('/permissions',):
+                    _st = globals().get('_CCPORT_RULES', {})
+                    _emit({'type': 'permission_rules', 'allow': _st.get('allow', []), 'deny': _st.get('deny', []), 'ask': _st.get('ask', []), 'mode': globals().get('_CCPORT_MODE', 'default')})
         except Exception as _e:
             _emit({'type': 'error', 'message': str(_e)})
 
@@ -319,6 +391,7 @@ while True:
             with redirect_stdout(_TokenStream()), redirect_stderr(_StderrStream()):
                 _rep = run_one_turn(_req.get('content', ''))
             _emit({'type': 'turn_status', 'phase': 'idle'})
+            _emit({'type': 'usage', 'input': _usage_acc['last_input'], 'output': _usage_acc['last_output'], 'total': _usage_acc['last_total'], 'cumulative_input': _usage_acc['input'], 'cumulative_output': _usage_acc['output'], 'estimated': False})
             _emit({'type': 'done', 'reply': _rep})
         except KeyboardInterrupt:
             _emit({'type': 'done', 'reply': _partial['text'] or '(interrupted)'})
