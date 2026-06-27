@@ -114,9 +114,10 @@ from contextlib import redirect_stdout, redirect_stderr
 
 os.environ['NEXA_QUIET'] = '1'
 os.environ['NEXA_STREAM_TOOLS'] = '1'
+_event_stdout = sys.stdout
 
 def _emit(ev):
-    print(json.dumps(ev, ensure_ascii=False), flush=True)
+    print(json.dumps(ev, ensure_ascii=False), file=_event_stdout, flush=True)
 
 # --- P0-3: tool_call_id 计数器 ---
 _tc_id = [0]
