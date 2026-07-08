@@ -96,6 +96,25 @@ def test_edit():
     r = M.Edit(f3, 'dup', 'UNIQUE', 'false')
     check('Edit.非唯一拒绝', any(x in r.lower() for x in ['match', 'unique', 'replace_all']), f'应拒绝非唯一: {r[:60]}')
 
+def test_edge_cases():
+    # Grep invalid regex → error (not empty)
+    r = M.Grep('[', 'src', '', 'content', '', 0,0,0, True, False, 0, 0, False)
+    check('Edge.Grep非法正则', 'error' in r.lower() or 'rror' in r.lower(), f'应报错: {r[:60]}')
+    # Bash dangerous command → blocked
+    r = M.Bash('rm -rf /', 0, False)
+    check('Edge.Bash危险命令', 'dangerous' in r.lower() or 'security' in r.lower() or 'not allowed' in r.lower(), f'应被拦: {r[:60]}')
+    # Bash Windows dangerous
+    r = M.Bash('format C:', 0, False)
+    check('Edge.Bash危险Win', 'dangerous' in r.lower() or 'security' in r.lower(), f'应被拦: {r[:60]}')
+    # Read ENOENT suggests similar
+    f = setup_file('readme.md', '# Hi\n')
+    r = M.Read(os.path.join(TMP, 'readm.md'), 0, 0, '')
+    check('Edge.Read相似建议', 'readme' in r or 'mean' in r.lower() or 'exist' in r.lower(), f'应建议: {r[:80]}')
+    # Edit not-found suggests closest
+    M.Read(f, 0, 0, '')
+    r = M.Edit(f, 'nonexistent_xyz_text', 'new', False)
+    check('Edge.Edit最近行', 'closest' in r.lower() or 'not found' in r.lower(), f'应建议: {r[:80]}')
+
 def test_multiedit():
     f = setup_file('multi.txt', 'one\ntwo\nthree\n')
     M.Read(f, '1', '10', '')
@@ -234,6 +253,7 @@ TESTS = [
     ('REPL', test_repl), ('PushNotification', test_push_notification),
     ('TerminalCapture', test_terminal_capture), ('Web', test_web),
     ('Agent', test_agent), ('AskUserQuestion', test_ask_user),
+    ('EdgeCases', test_edge_cases),
 ]
 
 for name, fn in TESTS:
