@@ -41,7 +41,11 @@ _dangerous = [
     'chmod 777', 'shutdown', 'reboot', 'halt', 'init 0',
     'drop database', 'drop table',
     ':(){:|:&};:',  # fork bomb
-    '> /dev/null 2>&1 &',  # silent background (suspicious combined with others)
+    # Windows-specific (Phase 17+ round 7)
+    'del /s /q', 'del /f /s', 'rmdir /s /q', 'rd /s /q',
+    'format ', 'reg delete', 'reg import',
+    'powershell -enc', 'powershell -e ',
+    'diskpart', 'cipher /w',
 ]
 _cmd_lower = _cmd.lower().strip()
 for _pat in _dangerous:
