@@ -117,7 +117,18 @@ if _ext_lower in BINARY_EXT:
 
 # --- text (FileReadTool.ts:1011-1078) ---
 if not os.path.isfile(full):
-    return "File does not exist. %s\nDid you mean a similar file? Try using Glob to find the correct path." % file_path
+    _hint = ''
+    _d = os.path.dirname(full) or '.'
+    try:
+        import difflib as _dl
+        _files = [f for f in os.listdir(_d) if os.path.isfile(os.path.join(_d, f))]
+        _target = os.path.basename(full)
+        _close = _dl.get_close_matches(_target, _files, n=3, cutoff=0.5)
+        if _close:
+            _hint = ' Did you mean: %s?' % ', '.join(_close[:3])
+    except Exception:
+        pass
+    return 'File does not exist: %s%s' % (file_path, _hint)
 
 _total_bytes = os.path.getsize(full)
 # maxSizeBytes 门：门的是【整个文件大小】(非切片)；仅当未指定 limit 时强制 (limits.ts:9-13, FileReadTool.ts:1018)
