@@ -70,3 +70,4 @@
 - [x] **Phase 12：UI 深度还原 CC 动态交互 + 修 bug** — 2026-06-25。深入读 CC Ink 代码(✻/⏺/Spinner/Clawd/权限框)后精准还原：✻ logo+小螃蟹 mascot+spinner(dots,生命周期)+⏺ToolName→⎿result+权限 dialog(框+参数)+ctx%底栏+流式▋；修 Bash Windows GBK 编码崩/note 泄漏/WebFetch 可读/agent 自认 Claude Code(跳过全局 OMC CLAUDE.md)。typecheck+边界 CLEAN。详见 PORT_TRACE.md Phase 12。
 - [ ] Phase 7-10：见上。
 - [自主优化 轮次 1-3 ✅ 2026-07-08] 稳定性：run_turn_safe 180s 硬超时 + PostToolUse 重复检测(≥3次注入换思路反馈) + escape 审计。34/34 工具测试无退步。
+- [自主优化 轮次 4-6 ✅ 2026-07-08] 使用效果：Edit difflib 最近行建议 + Read difflib 相似文件名建议 + 权限 allow 扩展(Task×4/SearchExtra/Skill/PushNotif 减少不必要 ask)。34/34 无退步。
