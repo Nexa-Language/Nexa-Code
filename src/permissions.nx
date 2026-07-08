@@ -78,8 +78,8 @@ def _format_tool_input(tool, args):
 
 # Phase 2/4 默认规则（真工具名）：只读/安全类 allow；改动/网络/子agent 类 ask（→deny>allow>ask）
 if not any(_rules.values()):
-    _rules['allow'] = ['Read', 'Glob', 'Grep', 'TodoWrite', 'EnterPlanMode', 'ExitPlanMode', 'VerifyPlan', 'WebSearch']
-    _rules['ask'] = ['Edit', 'Write', 'Bash', 'NotebookEdit', 'Agent', 'WebFetch', 'MCPTool', 'ListMcpResources', 'ReadMcpResource', 'McpAuth']
+    _rules['allow'] = ['Read', 'Glob', 'Grep', 'TodoWrite', 'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet', 'SearchExtraTools', 'Skill', 'PushNotification', 'EnterPlanMode', 'ExitPlanMode', 'VerifyPlan', 'WebSearch']
+    _rules['ask'] = ['Edit', 'MultiEdit', 'Write', 'Bash', 'NotebookEdit', 'Agent', 'WebFetch', 'Config', 'ExecuteExtraTool', 'REPL', 'MCPTool', 'ListMcpResources', 'ReadMcpResource', 'McpAuth']
 
 G['_CCPORT_RULES'] = _rules
 # mode: default | plan（plan=只读模式，对应 CC plan permission mode）
@@ -164,7 +164,7 @@ def _rule_matches(rule_str, tool, args):
             return True
     return _match_spec(_spec, str(_val))
 
-READONLY = {'Read', 'Glob', 'Grep', 'TodoWrite', 'EnterPlanMode', 'ExitPlanMode', 'VerifyPlan', 'WebSearch'}
+READONLY = {'Read', 'Glob', 'Grep', 'TodoWrite', 'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet', 'SearchExtraTools', 'Skill', 'PushNotification', 'EnterPlanMode', 'ExitPlanMode', 'VerifyPlan', 'WebSearch'}
 
 def _decide(tool, args):
     _rules = G.get('_CCPORT_RULES', {'allow': [], 'deny': [], 'ask': []})
