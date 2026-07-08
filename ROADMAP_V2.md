@@ -71,3 +71,4 @@
 - [ ] Phase 7-10：见上。
 - [自主优化 轮次 1-3 ✅ 2026-07-08] 稳定性：run_turn_safe 180s 硬超时 + PostToolUse 重复检测(≥3次注入换思路反馈) + escape 审计。34/34 工具测试无退步。
 - [自主优化 轮次 4-6 ✅ 2026-07-08] 使用效果：Edit difflib 最近行建议 + Read difflib 相似文件名建议 + 权限 allow 扩展(Task×4/SearchExtra/Skill/PushNotif 减少不必要 ask)。34/34 无退步。
+- [自主优化 轮次 7-9 ✅ 2026-07-08] 稳定性+测试：Bash Win危险命令 + 7 个边界测试(Grep正则/Bash危险/Read建议/Edit建议/plan阻止)。41/41 测试。
