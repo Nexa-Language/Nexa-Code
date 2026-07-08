@@ -107,8 +107,8 @@ export class Engine {
   send(obj: unknown): void { this.proc.stdin.write(JSON.stringify(obj) + "\n"); }
   sendMessage(content: string): void { this.send({ type: "message", content }); }
   sendCommand(name: string): void { this.send({ type: "command", name }); }
-  sendPermissionResponse(requestId: number, approved: boolean): void {
-    this.send({ type: "permission_response", request_id: requestId, approved });
+  sendPermissionResponse(requestId: number, approved: boolean, decision?: string): void {
+    this.send({ type: "permission_response", request_id: requestId, approved, decision: decision || (approved ? "allow_once" : "deny") });
   }
   // Phase 15 H5: send mode change to engine
   sendSetMode(mode: string): void { this.send({ type: "set_mode", mode }); }

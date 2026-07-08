@@ -299,6 +299,18 @@ function MarkdownTable({ rows }: { rows: string[][] }) {
   );
 }
 
+// Fix #3: 流式时用轻量纯文本渲染（避免每 token 触发完整 Markdown 解析）
+function StreamingText({ text }: { text: string }) {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  return (
+    <Box flexDirection="column">
+      {lines.map((line, i) => (
+        <Text key={i}>{line || " "}</Text>
+      ))}
+    </Box>
+  );
+}
+
 function MarkdownView({ text }: { text: string }) {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const nodes: React.ReactNode[] = [];
@@ -569,7 +581,8 @@ function MessageLog({ entries, streaming }: { entries: Entry[]; streaming: strin
       {streaming && (
         <Box marginTop={1}>
           <Text color={ORANGE}>● </Text>
-          <MarkdownView text={streaming} />
+          {/* Fix #3: 流式时用纯文本（无 Markdown 解析）避免每 token O(n) 重解析 */}
+          <StreamingText text={streaming} />
           <Text color={ORANGE}>▋</Text>
         </Box>
       )}
@@ -878,8 +891,7 @@ function FooterBar({
       </Text>
       <Text>
         <Text color={MODE_COLORS[mode]} bold>{mode === "bypass" ? "⏵⏵ bypass permissions on" : `${mode} permissions`}</Text>
-        <Text dimColor> (shift+tab to cycle) · {pathText} · ← for agents</Text>
-        <Text dimColor>                                           ◉ xhigh · /effort</Text>
+        <Text dimColor> (shift+tab to cycle) · {pathText}</Text>
       </Text>
     </Box>
   );
@@ -917,6 +929,7 @@ function App() {
   const exitTimerRef = useRef<NodeJS.Timeout | null>(null);
   const draftBeforeHistoryRef = useRef("");
   const engineRef = useRef<Engine | null>(null);
+  const streamingRef = useRef("");
 
   const showSlash = input.startsWith("/") && !input.includes(" ") && !input.includes("\n") && !busy && !permission && !picker;
   const slashMatches = useMemo(() => showSlash ? commandMatches(input) : [], [input, showSlash]);
@@ -951,8 +964,8 @@ function App() {
         setEngineReady(true);
         break;
       case "assistant_token":
-        setStreaming((s) => s + e.content);
-        setTokensOut((n) => n + estimateTokens(e.content));
+        streamingRef.current += e.content;
+        setStreaming(streamingRef.current);
         break;
       case "turn_status":
         setThinkPhase(e.phase || "");
@@ -972,12 +985,12 @@ function App() {
         if (typeof e.tokens_in === "number") setTokensIn(e.tokens_in);
         if (typeof e.tokens_out === "number") setTokensOut(e.tokens_out);
         break;
-      case "tool_call":
-        setStreaming((s) => {
-          if (s.trim()) setEntries((es) => [...es, { kind: "assistant", text: s.trim() }]);
-          return "";
-        });
-        setEntries((es) => [...es, {
+      case "tool_call": {
+        // Fix #1: 不在 setStreaming updater 内嵌套 setEntries——先快照 streaming，再顺序更新
+        const pendingStream = streamingRef.current;
+        const newEntries: Entry[] = [];
+        if (pendingStream.trim()) newEntries.push({ kind: "assistant", text: pendingStream.trim() });
+        newEntries.push({
           kind: "tool",
           id: nextToolId.current++,
           name: e.name,
@@ -985,9 +998,13 @@ function App() {
           result: null,
           status: "running",
           expanded: false,
-        }]);
+        });
+        setEntries((es) => [...es, ...newEntries]);
+        setStreaming("");
+        streamingRef.current = "";
         setThinkTool(e.name);
         break;
+      }
       case "tool_result":
         setEntries((es) => {
           const next = [...es];
@@ -1006,17 +1023,18 @@ function App() {
         });
         setThinkTool("");
         break;
-      case "done":
-        setStreaming((s) => {
-          const text = (s.trim() || e.reply).trim();
-          if (text) setEntries((es) => [...es, { kind: "assistant", text }]);
-          return "";
-        });
+      case "done": {
+        // Fix #2: 不嵌套 setEntries 在 setStreaming updater 里
+        const text = (streamingRef.current.trim() || e.reply).trim();
+        if (text) setEntries((es) => [...es, { kind: "assistant", text }]);
+        streamingRef.current = "";
+        setStreaming("");
         setBusy(false);
         setThinkPhase("");
         setThinkTool("");
         turnStartRef.current = 0;
         break;
+      }
       case "permission_request":
         setPermission({ requestId: e.request_id, tool: e.tool, args: e.args });
         break;
@@ -1231,10 +1249,11 @@ function App() {
       setThinkPhase("");
       setThinkTool("");
       turnStartRef.current = 0;
-      setStreaming((s) => {
-        if (s.trim()) setEntries((es) => [...es, { kind: "assistant", text: s.trim() + "  ⏸ Interrupted" }]);
-        return "";
-      });
+      // Fix: 不嵌套 setEntries 在 setStreaming updater 里
+      const partialText = streamingRef.current.trim();
+      if (partialText) setEntries((es) => [...es, { kind: "assistant", text: partialText + "  ⏸ Interrupted" }]);
+      streamingRef.current = "";
+      setStreaming("");
       setEntries((es) => [...es, { kind: "system", tone: "warning", text: "Interrupt requested." }]);
       return;
     }
@@ -1331,12 +1350,9 @@ function App() {
           tool={permission.tool}
           args={permission.args}
           onRespond={(decision) => {
-            if (decision === "always") {
-              appendSystem("Always allow is not persistent yet; allowing this tool call once.", "warning");
-              engineRef.current?.sendPermissionResponse(permission.requestId, true);
-            } else {
-              engineRef.current?.sendPermissionResponse(permission.requestId, decision === "allow");
-            }
+            const approved = decision === "allow" || decision === "always";
+            // Fix #6: 传 decision 字段给引擎（allow_once / allow_session / deny）
+            engineRef.current?.sendPermissionResponse(permission.requestId, approved, decision === "always" ? "allow_session" : decision);
             setPermission(null);
           }}
         />
