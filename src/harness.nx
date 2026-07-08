@@ -34,8 +34,12 @@ import time
 _p = prompt or ''
 _mr = int(max_retries) if max_retries else 3
 _attempt = 0
+_wall_t0 = time.time()
+_WALL_LIMIT = 180
 while True:
     _attempt += 1
+    if (time.time() - _wall_t0) > _WALL_LIMIT:
+        return '[turn failed: wall-clock timeout %ds exceeded after %d attempt(s)]' % (_WALL_LIMIT, _attempt - 1)
     try:
         _reply = Coder.run(_p)
         return _reply if _reply else '(no reply)'
