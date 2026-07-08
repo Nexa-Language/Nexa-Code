@@ -133,9 +133,10 @@ _partial = {'text': ''}
 def _read_stdin(timeout=None):
     return sys.stdin.readline()
 
-# --- 结构化 tool 事件 hooks（P0-3: tool_call_id + status）---
+# --- 结构化 tool 事件 hooks（P0-3: tool_call_id + status + 重复检测）---
 from src.runtime.tools_registry import register_tool_hook
 _pending_tcid = {}
+_repeat_tracker = {'sig': None, 'count': 0}
 def _tool_pre(name, args_dict):
     _tcid = _next_tcid()
     _pending_tcid[name] = _tcid
@@ -145,6 +146,14 @@ def _tool_post(name, args_dict, result):
     _tcid = _pending_tcid.pop(name, 'tc_?')
     _status = 'failed' if ('error' in str(result).lower() or 'permission denied' in str(result).lower()) else 'completed'
     _emit({'type': 'tool_result', 'tool_call_id': _tcid, 'name': name, 'result': result, 'status': _status})
+    # 重复检测：同一 tool+args 连续 ≥3 次 → 注入换思路反馈
+    import json as _j2
+    _sig = name + ':' + _j2.dumps(args_dict, sort_keys=True)[:200]
+    if _sig == _repeat_tracker['sig']:
+        _repeat_tracker['count'] += 1
+    else:
+        _repeat_tracker['sig'] = _sig
+        _repeat_tracker['count'] = 1
     # P1-5: todo/task 结构化事件
     if name in ('TodoWrite', 'TaskCreate', 'TaskUpdate', 'TaskList'):
         try:
