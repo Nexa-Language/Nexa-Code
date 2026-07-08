@@ -154,6 +154,13 @@ def _tool_post(name, args_dict, result):
     else:
         _repeat_tracker['sig'] = _sig
         _repeat_tracker['count'] = 1
+    if _repeat_tracker['count'] >= 3:
+        _nl = chr(10)
+        _feedback = (_nl + _nl + '[system] You have called %s with the same arguments %d times. '
+                      'This approach is not working. Stop repeating and try a different strategy: '
+                      're-read the error, check assumptions, or ask the user.') % (name, _repeat_tracker['count'])
+        _emit({'type': 'tool_result', 'tool_call_id': _tcid, 'name': name, 'result': result + _feedback, 'status': _status})
+        return _feedback
     # P1-5: todo/task 结构化事件
     if name in ('TodoWrite', 'TaskCreate', 'TaskUpdate', 'TaskList'):
         try:
