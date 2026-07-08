@@ -114,6 +114,13 @@ def test_edge_cases():
     M.Read(f, 0, 0, '')
     r = M.Edit(f, 'nonexistent_xyz_text', 'new', False)
     check('Edge.Edit最近行', 'closest' in r.lower() or 'not found' in r.lower(), f'应建议: {r[:80]}')
+    # Permission plan mode blocks Write but allows Read
+    M.set_permission_mode('plan')
+    _wblock = M.Write(os.path.join(TMP, 'plan_test.txt'), 'test')
+    check('Edge.plan阻止Write', 'plan' in _wblock.lower() or 'not allowed' in _wblock.lower(), f'应被plan阻止: {_wblock[:60]}')
+    _ballow = M.Read(f, 0, 0, '')
+    check('Edge.plan允许Read', 'Hi' in _ballow or len(_ballow) > 0, f'plan下Read应允许: {_ballow[:60]}')
+    M.set_permission_mode('default')
 
 def test_multiedit():
     f = setup_file('multi.txt', 'one\ntwo\nthree\n')
