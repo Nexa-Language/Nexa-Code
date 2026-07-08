@@ -121,6 +121,21 @@ def test_edge_cases():
     _ballow = M.Read(f, 0, 0, '')
     check('Edge.plan允许Read', 'Hi' in _ballow or len(_ballow) > 0, f'plan下Read应允许: {_ballow[:60]}')
     M.set_permission_mode('default')
+    # MultiEdit atomicity: one bad edit → none applied
+    f2 = setup_file('atomic.txt', 'alpha\nbeta\n')
+    M.Read(f2, 0, 0, '')
+    bad_edits = json.dumps([{'old_string': 'alpha', 'new_string': 'ALPHA'}, {'old_string': 'NONEXIST', 'new_string': 'X'}])
+    r = M.MultiEdit(f2, bad_edits)
+    content_after = open(f2).read()
+    check('Edge.MultiEdit原子性', 'alpha' in content_after and 'ALPHA' not in content_after, f'应回滚(原子): {content_after[:60]}')
+    # CRLF normalization
+    import os as _os
+    f3 = os.path.join(TMP, 'crlf.txt')
+    with open(f3, 'wb') as _wf:
+        _wf.write(b'hello\r\nworld\r\n')
+    M.Read(f3, 0, 0, '')
+    r = M.Edit(f3, 'hello', 'HELLO', False)
+    check('Edge.CRLF', 'updated' in r.lower() or 'HELLO' in open(f3, 'rb').read().decode('utf-8', 'replace'), f'CRLF编辑: {r[:60]}')
 
 def test_multiedit():
     f = setup_file('multi.txt', 'one\ntwo\nthree\n')
