@@ -79,12 +79,16 @@ if _actual not in content:
 # FileEditTool.ts:300-321 — 计数与唯一性
 _matches = content.count(_actual)
 if _matches == 0:
-    # P1-4: agent-friendly error with suggestion (对齐 CC findActualString 失败提示)
     _hint = ''
-    if len(old_string) > 10:
-        _partial = old_string[:20]
-        if _partial in content:
-            _hint = ' Note: the first 20 chars of old_string DO exist in the file. The file may have changed since you last read it — Read the file again to get current content.'
+    if len(old_string) > 5:
+        import difflib as _dl
+        _content_lines = content.split(chr(10))
+        _old_lines = old_string.split(chr(10))
+        _close = _dl.get_close_matches(_old_lines[0][:60], _content_lines, n=1, cutoff=0.6)
+        if _close:
+            _hint = ' Closest matching line in file: "%s". The file may have changed since you last read it.' % _close[0][:100]
+        elif old_string[:20] in content:
+            _hint = ' Note: the first 20 chars of old_string DO exist in the file — the file may have changed. Read it again.'
     return 'String to replace not found in file.\nString: %s%s' % (old_string, _hint)
 if _matches > 1 and not _ra:
     return ('Found %d matches of the string to replace, but replace_all is false. '
