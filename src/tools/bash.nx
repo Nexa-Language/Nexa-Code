@@ -108,7 +108,15 @@ if _err:
 if not _out and not _err:
     _parts.append('(no output)')
 _result = '\n'.join(_parts)
-# run_in_background=true 当前同步执行（异步后台子系统未移植）；不在 agent 可见输出里加 note（避免泄漏/干扰）
+# 非零退出码提示（agent 友好）：常见无害退出码 vs 真错误
+if _code != 0:
+    _harmless = _code in (1,) and (_cmd_lower.startswith('grep') or _cmd_lower.startswith('find') or _cmd_lower.startswith('ls'))
+    if _harmless:
+        _result = _result + '\n[exit code: %d — this is normal for %s when no results found]' % (_code, _cmd.split()[0] if _cmd.split() else 'command')
+    else:
+        _result = _result + '\n[exit code: %d]' % _code
+else:
+    _result = _result + '\n[exit code: 0]'
 return '%s\n[exit code: %d]' % (_result, _code)
 """
 }
