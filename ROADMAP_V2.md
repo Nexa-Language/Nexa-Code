@@ -69,3 +69,4 @@
 - [x] **Phase 11：换 glm-5.1 + Ink/React UI 还原 CC** — 2026-06-25。glm-5.1 调通；引擎加 **JSON 事件模式**（Nexa I/O 层，stdin/stdout JSON 协议）；**ui-ink/ Ink/React UI**（CC 亲儿子技术栈，278 行 TS）：StatusBar+MessageLog(⏺工具)+PromptInput+权限 modal+流式+Claude 主题(Orange/Blue/暖暗底)，subprocess+JSON 管道驱动 Nexa 引擎。typecheck CLEAN + Ink 渲染 CC 风格帧 + TS↔JSON↔Python 桥端到端通；边界 CLEAN；Textual UI 保留 backup。详见 PORT_TRACE.md Phase 11。
 - [x] **Phase 12：UI 深度还原 CC 动态交互 + 修 bug** — 2026-06-25。深入读 CC Ink 代码(✻/⏺/Spinner/Clawd/权限框)后精准还原：✻ logo+小螃蟹 mascot+spinner(dots,生命周期)+⏺ToolName→⎿result+权限 dialog(框+参数)+ctx%底栏+流式▋；修 Bash Windows GBK 编码崩/note 泄漏/WebFetch 可读/agent 自认 Claude Code(跳过全局 OMC CLAUDE.md)。typecheck+边界 CLEAN。详见 PORT_TRACE.md Phase 12。
 - [ ] Phase 7-10：见上。
+- [自主优化 轮次 1-3 ✅ 2026-07-08] 稳定性：run_turn_safe 180s 硬超时 + PostToolUse 重复检测(≥3次注入换思路反馈) + escape 审计。34/34 工具测试无退步。
