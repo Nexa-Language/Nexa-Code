@@ -615,9 +615,111 @@ def _install():
 def _plugin():
     return 'Plugins: none. Use /install for packages. (Marketplace is platform feature.)'
 
+# --- Round 3: 11 more CC commands ---
+def _diff():
+    import subprocess as _sp
+    try:
+        _r = _sp.run(['git', 'diff'] + ((_args or '').strip().split() if _args else []), capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
+        return ((_r.stdout or '').strip()[:3000]) or '(no changes)'
+    except Exception as _e:
+        return 'git diff failed: %s' % _e
+
+def _hooks():
+    import json as _j, os as _os
+    _cfg = {}
+    for _p in (_os.path.join(_os.getcwd(), '.claude', 'settings.local.json'), _os.path.join(_os.path.expanduser('~'), '.claude', 'settings.json')):
+        if _os.path.isfile(_p):
+            try:
+                with open(_p, 'r') as _f:
+                    _h = (_j.load(_f) or {}).get('hooks', {})
+                    for _e, _entries in (_h or {}).items():
+                        _cfg.setdefault(_e, []).extend(_entries)
+            except Exception:
+                pass
+    if not _cfg:
+        return 'No hooks. Configure .claude/settings.local.json hooks.{PreToolUse|PostToolUse|UserPromptSubmit|Stop}'
+    _lines = ['Hooks:']
+    for _e, _entries in _cfg.items():
+        _lines.append('  %s (%d)' % (_e, len(_entries)))
+        for _en in _entries:
+            for _h in (_en.get('hooks') or []):
+                _lines.append('    %s' % _h.get('command', '?')[:80])
+    return chr(10).join(_lines)
+
+def _history():
+    _a = _agent()
+    _msgs = [m for m in (_a.messages if _a else []) if m.get('role') in ('user', 'assistant')]
+    if not _msgs:
+        return 'No history.'
+    _lines = ['History (%d):' % len(_msgs)]
+    for _i, _m in enumerate(_msgs[-20:]):
+        _lines.append('  [%d] %s: %s' % (_i+1, _m.get('role'), str(_m.get('content', ''))[:80].replace(chr(10), ' ')))
+    return chr(10).join(_lines)
+
+def _theme():
+    _t = (_args or '').strip().lower()
+    if _t in ('dark', 'light'):
+        globals()['_CCPORT_THEME'] = _t
+    return 'Theme: %s (dark/light)' % globals().get('_CCPORT_THEME', 'dark')
+
+def _env():
+    import sys, subprocess as _sp
+    _a = _agent()
+    _b = ''
+    try:
+        _b = (_sp.run(['git', 'branch', '--show-current'], capture_output=True, text=True, timeout=5).stdout or '').strip()
+    except Exception:
+        pass
+    return 'Environment:\n  Python: %s\n  Platform: %s\n  Model: %s\n  Git: %s' % (sys.version.split()[0], sys.platform, _a.model if _a else '?', _b or '(none)')
+
+def _version():
+    import os as _os
+    _v = '?'
+    _vf = _os.path.join(_os.getcwd(), 'VERSION')
+    if _os.path.isfile(_vf):
+        _v = open(_vf).read().strip()
+    return 'Claude Code Nexa Port v%s\n50 tools | 39+ commands | GLM-5.1' % _v
+
+def _recap():
+    _a = _agent()
+    _msgs = [m for m in (_a.messages if _a else []) if m.get('role') in ('user', 'assistant')]
+    if len(_msgs) < 3:
+        return 'Not enough messages for recap.'
+    try:
+        _c = _a._get_client()
+        _t = chr(10).join('[%s] %s' % (m.get('role'), str(m.get('content'))[:200]) for m in _msgs)
+        return _c.chat.completions.create(model=_a.model, timeout=30, messages=[{'role':'system','content':'Brief recap of conversation.'},{'role':'user','content':_t}]).choices[0].message.content or '(empty)'
+    except Exception as _e:
+        return 'Recap failed: %s' % _e
+
+def _summary():
+    return _recap()
+
+def _commit():
+    import subprocess as _sp
+    _msg = (_args or 'update').strip()
+    try:
+        _sp.run(['git', 'add', '-A'], capture_output=True, timeout=10)
+        _r = _sp.run(['git', 'commit', '-m', _msg], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
+        return 'Committed: %s' % _msg if _r.returncode == 0 else 'Commit failed: %s' % (_r.stderr or '')[:200]
+    except Exception as _e:
+        return 'Commit failed: %s' % _e
+
+def _sessionstats():
+    _a = _agent()
+    _msgs = _a.messages if _a else []
+    _chars = sum(len(str(m.get('content', ''))) for m in _msgs)
+    return 'Stats:\n  Messages: %d\n  Chars: %d\n  Est tokens: %d' % (len(_msgs), _chars, _chars // 4)
+
+def _effort():
+    _e = (_args or '').strip().lower()
+    if _e in ('low', 'medium', 'high', 'max'):
+        globals()['_CCPORT_EFFORT'] = _e
+    return 'Effort: %s (low/medium/high/max)' % globals().get('_CCPORT_EFFORT', 'high')
+
 _DISPATCH = {
     'help': _help, 'clear': _clear, 'compact': _compact, 'model': _model,
-    'cost': _usage, 'usage': _usage, 'stats': _usage, 'status': _status,
+    'cost': _usage, 'usage': _usage, 'stats': _sessionstats, 'status': _status,
     'context': _context, 'config': _config, 'vim': _vim, 'fast': _fast,
     'rewind': _rewind, 'resume': _resume, 'exit': _exit, 'quit': _exit,
     'init': _init, 'doctor': _doctor, 'add-dir': _add_dir, 'memory': _memory,
@@ -628,6 +730,9 @@ _DISPATCH = {
     'feedback': _feedback, 'keybindings': _keybindings, 'release-notes': _release_notes,
     'screenshot': _screenshot, 'terminal-setup': _terminal_setup,
     'bug': _bug, 'install': _install, 'plugin': _plugin,
+    'diff': _diff, 'hooks': _hooks, 'history': _history, 'theme': _theme,
+    'env': _env, 'version': _version, 'recap': _recap, 'summary': _summary,
+    'commit': _commit, 'effort': _effort,
 }
 _handler = _DISPATCH.get(_name)
 if _handler is None:
