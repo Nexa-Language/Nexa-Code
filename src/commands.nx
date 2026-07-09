@@ -533,6 +533,80 @@ def _login():
               '  Supported: GLM / OpenAI-compatible / DeepSeek / Anthropic']
     return chr(10).join(_lines)
 
+# --- /feedback (CC commands/feedback/): record feedback ---
+def _feedback():
+    import os as _os, time as _t
+    _fb_dir = _os.path.join(_os.path.expanduser('~'), '.claude', 'feedback')
+    _os.makedirs(_fb_dir, exist_ok=True)
+    _fb_file = _os.path.join(_fb_dir, 'feedback-%d.txt' % int(_t.time()))
+    with open(_fb_file, 'w', encoding='utf-8') as _f:
+        _f.write(_args or '(no description)')
+    return 'Feedback recorded: %s' % _fb_file
+
+# --- /keybindings (CC commands/keybindings/): show keybindings ---
+def _keybindings():
+    _lines = ['Keybindings:', '  Ctrl+C: Quit (double-press)', '  Shift+Tab: Cycle permission mode',
+              '  Esc: Interrupt turn', '  Ctrl+J: New line', '  Up/Down: History', '  Tab: Complete command']
+    return chr(10).join(_lines)
+
+# --- /release-notes (CC commands/release-notes/): version history ---
+def _release_notes():
+    import os as _os
+    _vf = _os.path.join(_os.getcwd(), 'VERSION')
+    _ver = '?'
+    if _os.path.isfile(_vf):
+        with open(_vf, 'r') as _f:
+            _ver = _f.read().strip()
+    return 'Claude Code Nexa Port v%s\n50 tools | 40 commands | GLM-5.1' % _ver
+
+# --- /screenshot: capture terminal ---
+def _screenshot():
+    import sys as _sys, subprocess as _sp, os as _os, time as _t
+    _fp = 'screenshot-%d.png' % int(_t.time())
+    try:
+        if _sys.platform == 'darwin':
+            _sp.run(['screencapture', _fp], timeout=10)
+        elif _sys.platform == 'win32':
+            return 'Use Win+Shift+S on Windows.'
+        else:
+            _sp.run(['import', '-window', 'root', _fp], timeout=10)
+        return 'Screenshot: %s (%d bytes)' % (_fp, _os.path.getsize(_fp)) if _os.path.isfile(_fp) else 'Screenshot failed.'
+    except Exception as _e:
+        return 'Screenshot failed: %s' % _e
+
+# --- /terminal-setup: terminal tips ---
+def _terminal_setup():
+    return chr(10).join(['Terminal Setup:', '  Font: monospace with Unicode (for ⏺ ⎽ glyphs)',
+              '  Color: 256-color or truecolor', '  Shift+Tab: permission modes', '  Ctrl+J: new line'])
+
+# --- /bug: report bug ---
+def _bug():
+    import os as _os, time as _t
+    _bf = _os.path.join(_os.path.expanduser('~'), '.claude', 'bug-reports')
+    _os.makedirs(_bf, exist_ok=True)
+    _f = _os.path.join(_bf, 'bug-%d.txt' % int(_t.time()))
+    with open(_f, 'w', encoding='utf-8') as _fh:
+        _fh.write('Bug: %s\n' % (_args or '(no desc)'))
+    return 'Bug report saved: %s' % _f
+
+# --- /install: pip/bun package install ---
+def _install():
+    import subprocess as _sp
+    _pkg = (_args or '').strip()
+    if not _pkg:
+        return 'Usage: /install <package>'
+    _cmd = ['bun', 'add'] if _pkg.startswith('@') else ['pip', 'install']
+    _cmd.append(_pkg)
+    try:
+        _r = _sp.run(_cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
+        return '%s %s: %s' % (_cmd[0], _pkg, (_r.stdout or _r.stderr)[:200])
+    except Exception as _e:
+        return 'Install failed: %s' % _e
+
+# --- /plugin: plugin management (stub) ---
+def _plugin():
+    return 'Plugins: none. Use /install for packages. (Marketplace is platform feature.)'
+
 _DISPATCH = {
     'help': _help, 'clear': _clear, 'compact': _compact, 'model': _model,
     'cost': _usage, 'usage': _usage, 'stats': _usage, 'status': _status,
@@ -543,6 +617,9 @@ _DISPATCH = {
     'copy': _copy, 'export': _export,
     'undo': _undo, 'review': _review, 'share': _share, 'git': _git,
     'mcp': _mcp_manage, 'pr': _pr, 'login': _login,
+    'feedback': _feedback, 'keybindings': _keybindings, 'release-notes': _release_notes,
+    'screenshot': _screenshot, 'terminal-setup': _terminal_setup,
+    'bug': _bug, 'install': _install, 'plugin': _plugin,
 }
 _handler = _DISPATCH.get(_name)
 if _handler is None:
