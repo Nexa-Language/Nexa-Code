@@ -73,3 +73,4 @@
 - [自主优化 轮次 4-6 ✅ 2026-07-08] 使用效果：Edit difflib 最近行建议 + Read difflib 相似文件名建议 + 权限 allow 扩展(Task×4/SearchExtra/Skill/PushNotif 减少不必要 ask)。34/34 无退步。
 - [自主优化 轮次 7-9 ✅ 2026-07-08] 稳定性+测试：Bash Win危险命令 + 7 个边界测试(Grep正则/Bash危险/Read建议/Edit建议/plan阻止)。41/41 测试。
 - [自主优化 轮次 10-11 ✅ 2026-07-08] 测试+UX：MultiEdit原子性+CRLF测试 + Bash退出码上下文提示。43/43 测试。GLM端到端无回归。
+- [功能覆盖大扩充 ✅ 2026-07-09] 50 user-facing tools (27→50, +23 new). 60 tests (43→60, +17). Tools: Sleep/Worktree×2/SendMessage/Cron×3/Goal/CtxInspect/DiscoverSkills/Monitor/PowerShell/Brief/LocalMemoryRecall/ListPeers/SendUserFile/RemoteTrigger/Artifact/ReviewArtifact. Build+tsc+60/60 PASS.
