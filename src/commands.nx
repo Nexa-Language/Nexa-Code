@@ -723,7 +723,7 @@ _DISPATCH = {
     'context': _context, 'config': _config, 'vim': _vim, 'fast': _fast,
     'rewind': _rewind, 'resume': _resume, 'exit': _exit, 'quit': _exit,
     'init': _init, 'doctor': _doctor, 'add-dir': _add_dir, 'memory': _memory,
-    'permissions': _permissions_enhanced, 'agents': _agents,
+    'permissions': _permissions, 'agents': _agents,
     'copy': _copy, 'export': _export,
     'undo': _undo, 'review': _review, 'share': _share, 'git': _git,
     'mcp': _mcp_manage, 'pr': _pr, 'login': _login,
