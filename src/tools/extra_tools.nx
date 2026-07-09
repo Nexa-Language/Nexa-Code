@@ -1,0 +1,274 @@
+// extra_tools.nx — Phase 19 批量移植 CC 高频工具
+// 每个工具头注释标注 CC 源。python! 单 \n。
+
+// ── SleepTool (SleepTool/prompt.ts) ──
+@tool("Wait for a specified duration in seconds. Use when told to sleep/wait, or waiting for something. The user can interrupt.")
+fn Sleep(seconds: string): string {
+    python! """
+import time
+_s = float(seconds) if seconds else 1.0
+if _s > 300:
+    _s = 300
+time.sleep(_s)
+return 'Slept %.1fs.' % _s
+"""
+}
+
+// ── EnterWorktree / ExitWorktree (EnterWorktreeTool/ + ExitWorktreeTool/) ──
+@tool("Create and enter a git worktree (isolated working directory). branch: the branch name for the worktree. Uses git worktree add. Returns the worktree path.")
+fn EnterWorktree(branch: string, path: string): string {
+    python! """
+import subprocess, os
+_b = (branch or '').strip()
+if not _b:
+    return 'branch is required.'
+_wt = (path or '').strip() or ('.worktrees/' + _b)
+try:
+    _r = subprocess.run(['git', 'worktree', 'add', _wt, '-b', _b],
+        capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
+    if _r.returncode != 0:
+        return 'git worktree add failed: %s' % (_r.stderr or _r.stdout)[:200]
+    return 'Created worktree at %s (branch %s). Run commands from this directory.' % (os.path.abspath(_wt), _b)
+except Exception as _e:
+    return 'EnterWorktree failed: %s' % _e
+"""
+}
+
+@tool("Remove a git worktree and clean up. branch: the worktree branch to remove. Uses git worktree remove.")
+fn ExitWorktree(branch: string, path: string): string {
+    python! """
+import subprocess, os
+_b = (branch or '').strip()
+_wt = (path or '').strip() or ('.worktrees/' + _b if _b else '')
+if not _wt:
+    return 'branch or path is required.'
+try:
+    _r = subprocess.run(['git', 'worktree', 'remove', _wt, '--force'],
+        capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
+    if _r.returncode != 0:
+        return 'git worktree remove failed: %s' % (_r.stderr or _r.stdout)[:200]
+    if _b:
+        subprocess.run(['git', 'branch', '-D', _b], capture_output=True, timeout=10)
+    return 'Removed worktree %s.' % _wt
+except Exception as _e:
+    return 'ExitWorktree failed: %s' % _e
+"""
+}
+
+// ── SendMessage (SendMessageTool/constants.ts) ──
+@tool("Send a message to another agent by name. agent_name: target agent. message: content to send. Stores in _CCPORT_MESSAGES for the target to read.")
+fn SendMessage(agent_name: string, message: string): string {
+    python! """
+_mbox = globals().setdefault('_CCPORT_MESSAGES', {})
+_an = (agent_name or '').strip()
+_msg = message or ''
+if not _an:
+    return 'agent_name is required.'
+_mbox.setdefault(_an, []).append({'from': 'Coder', 'content': _msg, 'ts': __import__('time').time()})
+return 'Message sent to %s.' % _an
+"""
+}
+
+// ── CronCreate / CronDelete / CronList (ScheduleCronTool/) ──
+@tool("Create a scheduled cron task. cron: cron expression (e.g. '0 9 * * *' for daily 9am). prompt: the prompt to run. name: task name.")
+fn CronCreate(cron: string, prompt: string, name: string): string {
+    python! """
+import time
+_cron = (cron or '').strip()
+_pmt = prompt or ''
+_nm = name.strip() if (name or '').strip() else ('cron-%d' % int(time.time()))
+if not _cron:
+    return 'cron expression is required.'
+_crons = globals().setdefault('_CCPORT_CRONS', {})
+_crons[_nm] = {'cron': _cron, 'prompt': _pmt, 'created': time.time(), 'last_run': 0}
+return 'Cron task created: %s (schedule: %s)' % (_nm, _cron)
+"""
+}
+
+@tool("Delete a scheduled cron task by name.")
+fn CronDelete(name: string): string {
+    python! """
+_nm = (name or '').strip()
+_crons = globals().get('_CCPORT_CRONS', {})
+if _nm in _crons:
+    del _crons[_nm]
+    return 'Cron task deleted: %s' % _nm
+return 'Cron task not found: %s' % _nm
+"""
+}
+
+@tool("List all scheduled cron tasks.")
+fn CronList(): string {
+    python! """
+_crons = globals().get('_CCPORT_CRONS', {})
+if not _crons:
+    return 'No cron tasks.'
+_lines = ['Cron tasks (%d):' % len(_crons)]
+for _n, _c in _crons.items():
+    _lines.append('  %s — %s: %s' % (_n, _c.get('cron', '?'), (_c.get('prompt', '') or '(no prompt)')[:60]))
+return chr(10).join(_lines)
+"""
+}
+
+// ── GoalTool (GoalTool/) — set/track/complete goals ──
+@tool("Set or update the current goal. action: set|update|complete|status. description: goal description (for set). status: on_track|blocked|completed (for update).")
+fn Goal(action: string, description: string, status: string): string {
+    python! """
+import time
+_g = globals().setdefault('_CCPORT_GOAL', None)
+_act = (action or 'status').strip().lower()
+if _act == 'set':
+    _g = {'desc': description or '(no description)', 'status': 'on_track', 'set_at': time.time(), 'blocked_count': 0}
+    globals()['_CCPORT_GOAL'] = _g
+    return 'Goal set: %s' % _g['desc']
+if _act == 'update':
+    if not _g:
+        return 'No goal set. Use action=set first.'
+    _st = (status or '').strip().lower()
+    if _st in ('on_track', 'blocked', 'completed'):
+        _g['status'] = _st
+        if _st == 'blocked':
+            _g['blocked_count'] = _g.get('blocked_count', 0) + 1
+        return 'Goal updated: status=%s' % _st
+    return 'Invalid status. Use on_track|blocked|completed.'
+if _act == 'complete':
+    if not _g:
+        return 'No goal to complete.'
+    _elapsed = time.time() - _g.get('set_at', time.time())
+    _desc = _g.get('desc', '?')
+    globals()['_CCPORT_GOAL'] = None
+    return 'Goal completed: %s (took %.0fs)' % (_desc, _elapsed)
+# status
+if not _g:
+    return 'No goal currently set.'
+return 'Current goal: %s [status: %s, blocked %d times]' % (_g.get('desc', '?'), _g.get('status', '?'), _g.get('blocked_count', 0))
+"""
+}
+
+// ── CtxInspect (CtxInspectTool/) — inspect current context ──
+@tool("Inspect the current context: message count, token estimate, model, cwd, git branch. Returns a summary string.")
+fn CtxInspect(): string {
+    python! """
+import os, subprocess
+_a = globals().get('Coder')
+_msgs = _a.messages if _a else []
+_u = sum(1 for m in _msgs if m.get('role') == 'user')
+_as = sum(1 for m in _msgs if m.get('role') == 'assistant')
+_chars = sum(len(str(m.get('content', ''))) for m in _msgs)
+_tokens = _chars // 4
+try:
+    _b = subprocess.run(['git', 'branch', '--show-current'], capture_output=True, text=True, timeout=5)
+    _branch = (_b.stdout or '').strip()
+except Exception:
+    _branch = ''
+_lines = [
+    'Context:',
+    '  Messages: %d (user=%d, assistant=%d)' % (len(_msgs), _u, _as),
+    '  Est. tokens: %d' % _tokens,
+    '  Model: %s' % (_a.model if _a else '?'),
+    '  CWD: %s' % os.getcwd(),
+    '  Git branch: %s' % (_branch or '(none)'),
+]
+return chr(10).join(_lines)
+"""
+}
+
+// ── DiscoverSkills (DiscoverSkillsTool/) — list available skills ──
+@tool("Discover available skills from ~/.claude/skills/ and .claude/skills/. Returns list of skill names and descriptions from SKILL.md frontmatter.")
+fn DiscoverSkills(query: string): string {
+    python! """
+import os, glob, re
+_q = (query or '').lower()
+_dirs = [
+    os.path.join(os.path.expanduser('~'), '.claude', 'skills'),
+    os.path.join(os.getcwd(), '.claude', 'skills'),
+]
+_found = []
+for _sd in _dirs:
+    if not os.path.isdir(_sd):
+        continue
+    for _name in sorted(os.listdir(_sd)):
+        _md = os.path.join(_sd, _name, 'SKILL.md')
+        if not os.path.isfile(_md):
+            continue
+        try:
+            with open(_md, 'r', encoding='utf-8', errors='replace') as _f:
+                _txt = _f.read()[:500]
+            _desc = ''
+            _m = re.search(r'description:\s*(.+)', _txt)
+            if _m:
+                _desc = _m.group(1).strip()[:80]
+            if _q and _q not in _name.lower() and _q not in _desc.lower():
+                continue
+            _found.append('  /%s — %s' % (_name, _desc))
+        except Exception:
+            pass
+if not _found:
+    return 'No skills found.' + (' Try a different query.' if _q else ' Add skills to ~/.claude/skills/<name>/SKILL.md.')
+return 'Available skills (%d):' % len(_found) + chr(10) + chr(10).join(_found)
+"""
+}
+
+// ── Monitor (MonitorTool/) — check background task output ──
+@tool("Check output from a background process. task_id: the background task ID to check. Returns recent stdout lines.")
+fn Monitor(task_id: string): string {
+    python! """
+_tid = (task_id or '').strip()
+if not _tid:
+    return 'task_id is required.'
+_tasks = globals().get('_CCPORT_BG_TASKS', {})
+if _tid not in _tasks:
+    return 'Background task not found: %s' % _tid
+_t = _tasks[_tid]
+return 'Task %s [status=%s]:%s%s' % (_tid, _t.get('status', '?'), chr(10), _t.get('output', '')[-500:])
+"""
+}
+
+// ── PowerShellTool (PowerShellTool/) — Windows PowerShell execution ──
+@tool("Execute a PowerShell command (Windows). command: the PowerShell command to run. On non-Windows, falls back to Bash.")
+fn PowerShell(command: string, timeout: string): string {
+    python! """
+import sys, subprocess
+_cmd = command or ''
+if not _cmd:
+    return 'PowerShell: command is required.'
+_to = int(timeout) if timeout else 30
+if sys.platform != 'win32':
+    return 'PowerShell not available on this platform. Use Bash instead.'
+try:
+    _proc = subprocess.run(
+        ['powershell', '-NoProfile', '-Command', _cmd],
+        capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=_to)
+    _out = (_proc.stdout or '').strip()
+    if _proc.stderr:
+        _out = _out + ('[stderr]' + chr(10) + _proc.stderr.strip()) if _out else _proc.stderr.strip()
+    if not _out:
+        _out = '(no output)'
+    return _out + chr(10) + '[exit code: %d]' % _proc.returncode
+except subprocess.TimeoutExpired:
+    return 'PowerShell command timed out after %ds.' % _to
+except Exception as _e:
+    return 'PowerShell error: %s' % _e
+"""
+}
+
+// ── Brief (BriefTool/) — set/get briefing ──
+@tool("Set or get a project briefing. action: set|get. text: briefing content (for set). Stored in .claude/brief.md.")
+fn Brief(action: string, text: string): string {
+    python! """
+import os
+_act = (action or 'get').strip().lower()
+_path = os.path.join(os.getcwd(), '.claude', 'brief.md')
+if _act == 'set':
+    _t = text or ''
+    os.makedirs(os.path.dirname(_path), exist_ok=True) if os.path.dirname(_path) else None
+    with open(_path, 'w', encoding='utf-8') as _f:
+        _f.write(_t)
+    return 'Briefing saved to %s (%d chars).' % (_path, len(_t))
+# get
+if os.path.isfile(_path):
+    with open(_path, 'r', encoding='utf-8', errors='replace') as _f:
+        return _f.read()
+return 'No briefing set. Use action=set to create one.'
+"""
+}

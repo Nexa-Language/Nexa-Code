@@ -137,6 +137,37 @@ def test_edge_cases():
     r = M.Edit(f3, 'hello', 'HELLO', False)
     check('Edge.CRLF', 'updated' in r.lower() or 'HELLO' in open(f3, 'rb').read().decode('utf-8', 'replace'), f'CRLF编辑: {r[:60]}')
 
+def test_extra_tools():
+    # Sleep
+    r = M.Sleep('0.01')
+    check('Sleep', 'slept' in r.lower() or 's.' in r, f'应返回 slept: {r[:30]}')
+    # Cron create + list + delete
+    r = M.CronCreate('0 6 * * *', 'standup', 'testcron')
+    check('CronCreate', 'created' in r.lower() or 'cron' in r.lower(), f'应创建: {r[:50]}')
+    r = M.CronList()
+    check('CronList', 'testcron' in r or 'cron' in r.lower(), f'应列出: {r[:60]}')
+    r = M.CronDelete('testcron')
+    check('CronDelete', 'deleted' in r.lower() or 'testcron' in r, f'应删除: {r[:40]}')
+    # Goal set + status
+    r = M.Goal('set', 'port 45 tools', '')
+    check('GoalSet', 'goal' in r.lower() or 'set' in r.lower(), f'应设置: {r[:40]}')
+    r = M.Goal('status', '', '')
+    check('GoalStatus', 'port 45' in r or 'goal' in r.lower(), f'应显示状态: {r[:60]}')
+    # SendMessage
+    r = M.SendMessage('Coder', 'hello')
+    check('SendMessage', 'sent' in r.lower() or 'message' in r.lower(), f'应发送: {r[:40]}')
+    # CtxInspect
+    r = M.CtxInspect()
+    check('CtxInspect', 'context' in r.lower() or 'message' in r.lower(), f'应显示上下文: {r[:40]}')
+    # Brief set + get
+    r = M.Brief('set', 'test briefing')
+    check('BriefSet', 'saved' in r.lower() or 'brief' in r.lower(), f'应保存: {r[:40]}')
+    r = M.Brief('get', '')
+    check('BriefGet', 'test briefing' in r or 'no' in r.lower(), f'应读取: {r[:40]}')
+    # DiscoverSkills (should find something or report none gracefully)
+    r = M.DiscoverSkills('')
+    check('DiscoverSkills', 'skill' in r.lower(), f'应列出技能: {r[:40]}')
+
 def test_multiedit():
     f = setup_file('multi.txt', 'one\ntwo\nthree\n')
     M.Read(f, '1', '10', '')
@@ -276,6 +307,7 @@ TESTS = [
     ('TerminalCapture', test_terminal_capture), ('Web', test_web),
     ('Agent', test_agent), ('AskUserQuestion', test_ask_user),
     ('EdgeCases', test_edge_cases),
+    ('ExtraTools', test_extra_tools),
 ]
 
 for name, fn in TESTS:
