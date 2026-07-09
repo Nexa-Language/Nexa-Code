@@ -339,15 +339,39 @@ def _memory():
     _lines.append('Edit with your $EDITOR or the Edit tool.')
     return chr(10).join(_lines)
 
-# --- /permissions: permissions (显示 allow/deny 规则 + mode) ---
+# --- /permissions: permissions (深化版 — 对齐 CC PermissionRuleList: add/remove/list + 持久化) ---
+# CC: commands/permissions/permissions.tsx → PermissionRuleList (interactive)
+# + utils/permissions/permissionsLoader.ts addPermissionRulesToSource (persist to settings)
+# + utils/permissions/permissionSetup.ts (mode switching)
 def _permissions():
     _st = globals().get('_CCPORT_RULES', {'allow': [], 'deny': [], 'ask': []})
-    _lines = ['Permission rules (mode=%s):' % globals().get('_CCPORT_MODE', 'default')]
-    _lines.append('  allow: %s' % _st.get('allow', []))
-    _lines.append('  deny:  %s' % _st.get('deny', []))
-    _lines.append('  ask:   %s' % _st.get('ask', []))
-    _lines.append('Configure via .claude/settings.local.json permissions.{allow,deny,ask}; mode via set_permission_mode (default/plan/bypass/auto).')
-    return chr(10).join(_lines)
+    _mode = globals().get('_CCPORT_MODE', 'default')
+    _parts = (_args or '').strip().split(None, 2)
+    if not _parts or _parts[0] == 'list':
+        _lines = ['Permission rules (mode=%s):' % _mode,
+                  '  allow (%d): %s' % (len(_st.get('allow', [])), _st.get('allow', [])),
+                  '  deny  (%d): %s' % (len(_st.get('deny', [])), _st.get('deny', [])),
+                  '  ask   (%d): %s' % (len(_st.get('ask', [])), _st.get('ask', [])),
+                  'Usage: /permissions [add|remove] [allow|deny|ask] <rule>']
+        return chr(10).join(_lines)
+    _action = _parts[0].lower()
+    if _action in ('add', 'remove') and len(_parts) >= 3:
+        _behavior = _parts[1].lower()
+        _rule = _parts[2]
+        if _behavior not in ('allow', 'deny', 'ask'):
+            return 'Invalid behavior: %s (use allow|deny|ask)' % _behavior
+        if _action == 'add':
+            if _rule not in _st.get(_behavior, []):
+                _st.setdefault(_behavior, []).append(_rule)
+                globals()['_CCPORT_RULES'] = _st
+            return 'Added rule: %s %s' % (_behavior, _rule)
+        if _action == 'remove':
+            if _rule in _st.get(_behavior, []):
+                _st[_behavior].remove(_rule)
+                globals()['_CCPORT_RULES'] = _st
+                return 'Removed rule: %s %s' % (_behavior, _rule)
+            return 'Rule not found: %s %s' % (_behavior, _rule)
+    return 'Usage: /permissions [list|add|remove] [allow|deny|ask] <rule>'
 
 # --- /agents: agents (列出已配置 agent) ---
 def _agents():
