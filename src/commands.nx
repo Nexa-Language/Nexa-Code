@@ -717,6 +717,18 @@ def _effort():
         globals()['_CCPORT_EFFORT'] = _e
     return 'Effort: %s (low/medium/high/max)' % globals().get('_CCPORT_EFFORT', 'high')
 
+def _session():
+    import os as _os, time as _t
+    _a = _agent()
+    _msgs = _a.messages if _a else []
+    _lines = ['Session info:',
+              '  Messages: %d' % len(_msgs),
+              '  Model: %s' % (_a.model if _a else '?'),
+              '  Mode: %s' % globals().get('_CCPORT_MODE', 'default'),
+              '  CWD: %s' % _os.getcwd(),
+              '  Started: %s' % _t.strftime('%Y-%m-%d %H:%M')]
+    return chr(10).join(_lines)
+
 _DISPATCH = {
     'help': _help, 'clear': _clear, 'compact': _compact, 'model': _model,
     'cost': _usage, 'usage': _usage, 'stats': _sessionstats, 'status': _status,
@@ -732,7 +744,7 @@ _DISPATCH = {
     'bug': _bug, 'install': _install, 'plugin': _plugin,
     'diff': _diff, 'hooks': _hooks, 'history': _history, 'theme': _theme,
     'env': _env, 'version': _version, 'recap': _recap, 'summary': _summary,
-    'commit': _commit, 'effort': _effort,
+    'commit': _commit, 'effort': _effort, 'session': _session,
 }
 _handler = _DISPATCH.get(_name)
 if _handler is None:
