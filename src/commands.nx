@@ -97,28 +97,68 @@ def _clear():
     globals().get('_CCPORT_READ_STATE', {}).clear()
     return 'Conversation cleared. Context freed.'
 
-# --- /compact: compact/compact.ts (compactConversation: 摘要替换旧消息) ---
+# --- /compact: compact/compact.ts (compactConversation: 深化版，对齐 CC 算法) ---
+# CC: compactConversation(complex.ts:411-660) + getCompactPrompt(prompt.ts:293) +
+#     formatCompactSummary(prompt.ts:311) + getCompactUserSummaryMessage(prompt.ts:337) +
+#     buildPostCompactMessages(compact.ts:336) + messagesToKeep 保留近 N 条
 def _compact():
     _a = _agent()
     if _a is None:
         return 'No agent.'
     _msgs = [m for m in _a.messages if m.get('role') in ('user', 'assistant')]
-    if len(_msgs) < 2:
+    if len(_msgs) < 4:
         return 'No messages to compact'
+    import re as _re
+    # CC compact.ts: 分组保留近 4 条消息（对齐 groupMessagesByApiRound 的 keep-recent）
+    _keep = _msgs[-4:]
+    _sum_msgs = _msgs[:-4]
+    if len(_sum_msgs) < 2:
+        return 'Too few messages to compact (need >4 after keeping recent 4).'
+    _transcript = chr(10).join('[%s] %s' % (m.get('role'), str(m.get('content'))[:600]) for m in _sum_msgs)
+    # CC prompt.ts getCompactPrompt: BASE_COMPACT_PROMPT 9-section + custom instructions
+    _compact_prompt = (
+        'Your task is to create a detailed summary of the conversation so far, '
+        'paying close attention to the user explicit requests and your previous actions. '
+        'This summary should be thorough in capturing technical details, code patterns, '
+        'and architectural decisions that would be essential for continuing development work without losing context.'
+        + chr(10) + chr(10) +
+        'Your summary should include the following sections:' + chr(10) + chr(10) +
+        '1. Primary Request and Intent' + chr(10) +
+        '2. Key Technical Concepts' + chr(10) +
+        '3. Files and Code Sections' + chr(10) +
+        '4. Errors and fixes' + chr(10) +
+        '5. Problem Solving' + chr(10) +
+        '6. All user messages' + chr(10) +
+        '7. Pending Tasks' + chr(10) +
+        '8. Current Work' + chr(10) +
+        '9. Optional Next Step'
+    )
+    if _args and _args.strip():
+        _compact_prompt = _compact_prompt + chr(10) + chr(10) + 'Additional Instructions:' + chr(10) + _args
     try:
         _client = _a._get_client()
-        _transcript = '\n'.join('[%s] %s' % (m.get('role'), str(m.get('content'))[:500]) for m in _msgs)
-        _sum_prompt = ('Summarize the conversation so far concisely, preserving key decisions, '
-                       'context, and any open tasks. Custom instructions: %s' % (_args or '(none)'))
         _resp = _client.chat.completions.create(
-            model=_a.model, timeout=60,
-            messages=[{'role': 'system', 'content': _sum_prompt},
+            model=_a.model, timeout=90,
+            messages=[{'role': 'system', 'content': _compact_prompt},
                       {'role': 'user', 'content': _transcript}])
-        _summary = _resp.choices[0].message.content or '(empty summary)'
-        _a.messages = [{'role': 'system', 'content': _a.system_prompt},
-                       {'role': 'user', 'content': 'Previous conversation summary:\n' + _summary},
-                       {'role': 'assistant', 'content': 'Understood. I have the summary of our previous conversation.'}]
-        return 'Conversation compacted (summary kept). %d messages -> summary.' % len(_msgs)
+        _raw = _resp.choices[0].message.content or '(empty summary)'
+        # CC formatCompactSummary: strip <analysis>, extract <summary> content
+        _summary = _re.sub(r'<analysis>.*?</analysis>', '', _raw, flags=_re.DOTALL).strip()
+        _m = _re.search(r'<summary>(.*?)</summary>', _summary, _re.DOTALL)
+        if _m:
+            _summary = 'Summary:' + chr(10) + _m.group(1).strip()
+        _summary = _re.sub(r'\n\n+', chr(10) + chr(10), _summary).strip()
+        # CC getCompactUserSummaryMessage: framing + transcript path + "recent preserved"
+        _framed = ('This session is being continued from a previous conversation that ran out of context. '
+                   'The summary below covers the earlier portion of the conversation.' + chr(10) + chr(10) + _summary
+                   + chr(10) + chr(10) + 'Recent messages are preserved verbatim.')
+        # CC buildPostCompactMessages: system + summary_user + ack + recent_kept
+        _sys = [m for m in _a.messages if m.get('role') == 'system']
+        _a.messages = _sys + [
+            {'role': 'user', 'content': _framed},
+            {'role': 'assistant', 'content': 'Understood. I have the summary and the recent messages are preserved.'}
+        ] + _keep
+        return 'Compacted: %d messages -> CC 9-section summary + kept last 4.' % len(_msgs)
     except Exception as _e:
         return 'Compact failed: %s' % _e
 
