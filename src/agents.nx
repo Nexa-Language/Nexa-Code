@@ -24,7 +24,7 @@
 // MACRO.ISSUES_EXPLAINER 经 defines.ts:23 解析为 ''（空）。
 // =============================================================================
 
-agent Coder uses Read, Edit, MultiEdit, Write, Bash, Glob, Grep, NotebookEdit, TodoWrite, Agent, EnterPlanMode, ExitPlanMode, VerifyPlan, WebFetch, WebSearch, AskUserQuestion, TaskCreate, TaskUpdate, TaskList, TaskGet, SearchExtraTools, ExecuteExtraTool, Skill, Config, PushNotification, REPL, TerminalCapture {
+agent Coder uses Read, Edit, MultiEdit, Write, Bash, Glob, Grep, NotebookEdit, TodoWrite, Agent, EnterPlanMode, ExitPlanMode, VerifyPlan, WebFetch, WebSearch, AskUserQuestion, TaskCreate, TaskUpdate, TaskList, TaskGet, SearchExtraTools, ExecuteExtraTool, Skill, Config, PushNotification, REPL, TerminalCapture, Sleep, EnterWorktree, ExitWorktree, SendMessage, CronCreate, CronDelete, CronList, Goal, CtxInspect, DiscoverSkills, Monitor, PowerShell, Brief, LocalMemoryRecall, ListPeers, SendUserFile, RemoteTrigger, Artifact, ReviewArtifact {
     model: "glm-5.1"
     stream: true   // Phase 7：流式默认开；带工具流式需 env NEXA_STREAM_TOOLS=1（P-RUN-1 补丁）；运行时 /model <name> 切换
     prompt: """
