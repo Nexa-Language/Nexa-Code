@@ -1,0 +1,102 @@
+// more_tools.nx — Phase 19 批次 2：更多 CC 工具
+// python! 单 \n。
+
+// ── LocalMemoryRecall (LocalMemoryRecallTool/) — session memory recall ──
+@tool("Recall a memory from the session memory store. query: what to recall. Searches _CCPORT_MEMORY for relevant entries.")
+fn LocalMemoryRecall(query: string): string {
+    python! """
+_q = (query or '').lower().strip()
+_mem = globals().get('_CCPORT_MEMORY', [])
+if not _mem:
+    return 'No session memories stored.'
+if not _q:
+    return 'Session memories (%d):%s%s' % (len(_mem), chr(10), chr(10).join('  - %s' % m[:80] for m in _mem[-10:]))
+_matches = [m for m in _mem if _q in m.lower()]
+if not _matches:
+    return 'No memories matching "%s".' % query
+return 'Matching memories (%d):%s%s' % (len(_matches), chr(10), chr(10).join('  - %s' % m[:100] for m in _matches[:5]))
+"""
+}
+
+// ── ListPeers (ListPeersTool/) — list connected peers (ACP stub) ──
+@tool("List connected peers (agents via ACP). Returns peer list or notice that ACP is not configured.")
+fn ListPeers(): string {
+    python! """
+_peers = globals().get('_CCPORT_PEERS', [])
+if not _peers:
+    return 'No peers connected. (ACP/teammate subsystem is a platform feature — Phase 5 out-of-scope.)'
+return 'Peers (%d):%s%s' % (len(_peers), chr(10), chr(10).join('  - %s' % p.get('name', '?') for p in _peers))
+"""
+}
+
+// ── SendUserFile (SendUserFileTool/) — send file to user ──
+@tool("Send a file to the user. file_path: the file to send. Copies to a downloadable location.")
+fn SendUserFile(file_path: string): string {
+    python! """
+import os, shutil, time
+_fp = (file_path or '').strip()
+if not _fp or not os.path.isfile(_fp):
+    return 'File not found: %s' % file_path
+_out_dir = os.path.join(os.path.expanduser('~'), '.claude', 'downloads')
+os.makedirs(_out_dir, exist_ok=True)
+_out = os.path.join(_out_dir, '%s_%d_%s' % (os.path.basename(_fp), int(time.time()), 'copy'))
+shutil.copy2(_fp, _out)
+return 'File sent: %s (%d bytes). Available at: %s' % (os.path.basename(_fp), os.path.getsize(_fp), _out)
+"""
+}
+
+// ── RemoteTrigger (RemoteTriggerTool/) — trigger remote CI/CD (stub) ──
+@tool("Trigger a remote CI/CD pipeline or webhook. url: webhook URL. payload_json: JSON payload. Returns HTTP response or error.")
+fn RemoteTrigger(url: string, payload_json: string): string {
+    python! """
+import urllib.request, json
+_url = (url or '').strip()
+if not _url:
+    return 'url is required.'
+try:
+    _data = json.dumps(json.loads(payload_json)) if payload_json else b'{}'
+    _req = urllib.request.Request(_url, data=_data.encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+    with urllib.request.urlopen(_req, timeout=30) as _r:
+        _body = _r.read(2000).decode('utf-8', 'replace')
+        return 'Triggered %s (HTTP %d): %s' % (_url, _r.status, _body[:200])
+except Exception as _e:
+    return 'RemoteTrigger failed: %s' % _e
+"""
+}
+
+// ── Artifact (ArtifactTool/) — create/share artifact (local file) ──
+@tool("Create a local artifact file (like CC cloud artifacts, but local). name: artifact name. content: text content. Saves to .claude/artifacts/.")
+fn Artifact(name: string, content: string): string {
+    python! """
+import os, time
+_nm = (name or 'artifact-%d' % int(time.time())).strip()
+_nm = _nm.replace('/', '_').replace('\\\\', '_')
+_dir = os.path.join(os.getcwd(), '.claude', 'artifacts')
+os.makedirs(_dir, exist_ok=True)
+_path = os.path.join(_dir, _nm + '.md')
+with open(_path, 'w', encoding='utf-8') as _f:
+    _f.write(content or '')
+return 'Artifact saved: %s (%d chars)' % (_path, len(content or ''))
+"""
+}
+
+// ── ReviewArtifact (ReviewArtifactTool/) — review an artifact ──
+@tool("Review a previously created artifact. name: artifact name. Returns the artifact content.")
+fn ReviewArtifact(name: string): string {
+    python! """
+import os
+_nm = (name or '').strip()
+if not _nm:
+    _dir = os.path.join(os.getcwd(), '.claude', 'artifacts')
+    if os.path.isdir(_dir):
+        _files = os.listdir(_dir)
+        if _files:
+            return 'Artifacts (%d): %s' % (len(_files), ', '.join(_files))
+    return 'No artifacts found.'
+_path = os.path.join(os.getcwd(), '.claude', 'artifacts', _nm + '.md')
+if not os.path.isfile(_path):
+    return 'Artifact not found: %s' % _nm
+with open(_path, 'r', encoding='utf-8', errors='replace') as _f:
+    return _f.read()
+"""
+}

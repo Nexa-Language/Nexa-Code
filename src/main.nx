@@ -33,6 +33,7 @@ include "tools/search_extra.nx";
 include "tools/skill.nx";
 include "tools/config_tool.nx";
 include "tools/extra_tools.nx";
+include "tools/more_tools.nx";
 include "tools/platform.nx";
 include "tools/todo.nx";
 include "tools/agent.nx";

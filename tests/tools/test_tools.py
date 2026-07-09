@@ -168,6 +168,26 @@ def test_extra_tools():
     r = M.DiscoverSkills('')
     check('DiscoverSkills', 'skill' in r.lower(), f'应列出技能: {r[:40]}')
 
+def test_more_tools():
+    # LocalMemoryRecall
+    r = M.LocalMemoryRecall('')
+    check('LocalMemoryRecall', 'memory' in r.lower(), f'应返回: {r[:40]}')
+    # ListPeers
+    r = M.ListPeers()
+    check('ListPeers', 'peer' in r.lower() or 'no' in r.lower(), f'应返回: {r[:40]}')
+    # SendUserFile
+    f = setup_file('sendfile.txt', 'content')
+    r = M.SendUserFile(f)
+    check('SendUserFile', 'sent' in r.lower() or 'file' in r.lower(), f'应发送: {r[:50]}')
+    # Artifact create + review
+    r = M.Artifact('testart', '# Test Artifact')
+    check('Artifact.create', 'saved' in r.lower() or 'artifact' in r.lower(), f'应保存: {r[:40]}')
+    r = M.ReviewArtifact('testart')
+    check('Artifact.review', 'Test Artifact' in r or 'not found' in r.lower(), f'应读取: {r[:40]}')
+    # RemoteTrigger (no real URL — should error gracefully)
+    r = M.RemoteTrigger('', '{}')
+    check('RemoteTrigger.noURL', 'url' in r.lower() or 'error' in r.lower() or 'required' in r.lower(), f'应报错: {r[:40]}')
+
 def test_multiedit():
     f = setup_file('multi.txt', 'one\ntwo\nthree\n')
     M.Read(f, '1', '10', '')
@@ -308,6 +328,7 @@ TESTS = [
     ('Agent', test_agent), ('AskUserQuestion', test_ask_user),
     ('EdgeCases', test_edge_cases),
     ('ExtraTools', test_extra_tools),
+    ('MoreTools', test_more_tools),
 ]
 
 for name, fn in TESTS:
