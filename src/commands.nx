@@ -635,33 +635,3 @@ if _handler is None:
 return _handler()
 """
 }
-
-# --- /permissions enhance: add/remove/list (对齐 CC PermissionRuleList) ---
-def _permissions_enhanced():
-    _st = globals().get('_CCPORT_RULES', {'allow': [], 'deny': [], 'ask': []})
-    _mode = globals().get('_CCPORT_MODE', 'default')
-    _parts = (_args or '').strip().split(None, 2)
-    if not _parts or _parts[0] == 'list':
-        _lines = ['Permission rules (mode=%s):' % _mode,
-                  '  allow: %s' % _st.get('allow', []),
-                  '  deny:  %s' % _st.get('deny', []),
-                  '  ask:   %s' % _st.get('ask', []),
-                  'Usage: /permissions [add|remove] [allow|deny|ask] <rule>']
-        return chr(10).join(_lines)
-    _action = _parts[0].lower()
-    if _action in ('add', 'remove') and len(_parts) >= 3:
-        _behavior = _parts[1].lower()
-        _rule = _parts[2]
-        if _behavior not in ('allow', 'deny', 'ask'):
-            return 'Invalid behavior: %s (use allow|deny|ask)' % _behavior
-        if _action == 'add':
-            if _rule not in _st.get(_behavior, []):
-                _st.setdefault(_behavior, []).append(_rule)
-                globals()['_CCPORT_RULES'] = _st
-            return 'Added %s: %s' % (_behavior, _rule)
-        if _action == 'remove':
-            if _rule in _st.get(_behavior, []):
-                _st[_behavior].remove(_rule)
-                globals()['_CCPORT_RULES'] = _st
-            return 'Removed %s: %s' % (_behavior, _rule)
-    return 'Usage: /permissions [add|remove] [allow|deny|ask] <rule>'
