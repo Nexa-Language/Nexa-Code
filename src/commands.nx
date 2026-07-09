@@ -73,6 +73,14 @@ def _help():
         ('/git <sub>', 'Git: status|log|branch|blame|stash|diff|cherry-pick|merge|push|pull'),
         ('/pr', 'Create a PR (git push + gh pr create)'),
         ('/login', 'Show API key / provider configuration'),
+        ('/feedback', 'Record user feedback'),
+        ('/keybindings', 'Show keyboard shortcuts'),
+        ('/release-notes', 'Show version history'),
+        ('/screenshot', 'Capture terminal screenshot'),
+        ('/terminal-setup', 'Terminal integration tips'),
+        ('/bug', 'Report a bug'),
+        ('/install <pkg>', 'Install a package (pip/bun)'),
+        ('/plugin', 'Plugin management info'),
         ('/exit', 'Exit the REPL'),
     ]
     _lines = ['Available commands:']
