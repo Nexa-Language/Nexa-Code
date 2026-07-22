@@ -26,5 +26,8 @@
       "Bash(rm:*)"
     ]
   },
-  "test_key": "test_value"
+  "test_key": "test_value",
+  "hooks": {
+    "Stop": []
+  }
 }

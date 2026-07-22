@@ -754,27 +754,90 @@ def _diff():
     except Exception as _e:
         return 'git diff failed: %s' % _e
 
+# --- /hooks: hooks (深化版 — 对齐 CC HooksConfigMenu: add/remove/test/list) ---
+# CC: commands/hooks/hooks.tsx → HooksConfigMenu (interactive editor)
+# + utils/hooks.ts: HookEvent + getHooksConfig (merge from all settings sources)
+# 深化：list/add/remove/test 子命令，多源合并读取，持久化写入 settings.local.json
 def _hooks():
-    import json as _j, os as _os
-    _cfg = {}
-    for _p in (_os.path.join(_os.getcwd(), '.claude', 'settings.local.json'), _os.path.join(_os.path.expanduser('~'), '.claude', 'settings.json')):
-        if _os.path.isfile(_p):
+    import json as _j, os as _os, subprocess as _sp
+    _VALID_EVENTS = {'PreToolUse', 'PostToolUse', 'UserPromptSubmit', 'Stop'}
+    _target = _os.path.join(_os.getcwd(), '.claude', 'settings.local.json')
+    _home = _os.path.expanduser('~')
+
+    def _load_merged():
+        _cfg = {}
+        for _p in (_os.path.join(_home, '.claude', 'settings.json'),
+                   _os.path.join(_os.getcwd(), '.claude', 'settings.json'),
+                   _target):
+            if _os.path.isfile(_p):
+                try:
+                    with open(_p, 'r') as _f:
+                        _h = (_j.load(_f) or {}).get('hooks', {})
+                        for _e, _entries in (_h or {}).items():
+                            _cfg.setdefault(_e, []).extend(_entries)
+                except Exception:
+                    pass
+        return _cfg
+
+    def _save_hooks(hooks):
+        _data = {}
+        os.makedirs(_os.path.dirname(_target), exist_ok=True) if _os.path.dirname(_target) else None
+        if _os.path.isfile(_target):
             try:
-                with open(_p, 'r') as _f:
-                    _h = (_j.load(_f) or {}).get('hooks', {})
-                    for _e, _entries in (_h or {}).items():
-                        _cfg.setdefault(_e, []).extend(_entries)
+                with open(_target, 'r') as _f:
+                    _data = _j.load(_f) or {}
             except Exception:
-                pass
-    if not _cfg:
-        return 'No hooks. Configure .claude/settings.local.json hooks.{PreToolUse|PostToolUse|UserPromptSubmit|Stop}'
-    _lines = ['Hooks:']
-    for _e, _entries in _cfg.items():
-        _lines.append('  %s (%d)' % (_e, len(_entries)))
-        for _en in _entries:
-            for _h in (_en.get('hooks') or []):
-                _lines.append('    %s' % _h.get('command', '?')[:80])
-    return chr(10).join(_lines)
+                _data = {}
+        _data['hooks'] = hooks
+        with open(_target, 'w') as _f:
+            _j.dump(_data, _f, indent=2)
+
+    _parts = (_args or '').strip().split(None, 2)
+    if not _parts or _parts[0] == 'list':
+        _cfg = _load_merged()
+        if not _cfg:
+            return 'No hooks configured.\nUsage: /hooks add <event> <command>\nEvents: %s' % ', '.join(sorted(_VALID_EVENTS))
+        _lines = ['Hooks:']
+        for _e in sorted(_cfg.keys()):
+            _entries = _cfg[_e]
+            _lines.append('  %s (%d):' % (_e, len(_entries)))
+            for _en in _entries:
+                for _h in (_en.get('hooks') or []):
+                    _lines.append('    [matcher=%s] %s' % (_en.get('matcher', '*'), _h.get('command', '?')[:80]))
+        _lines.append('\nUsage: /hooks [list|add <event> <cmd>|remove <event> <cmd>|test <event>]')
+        return chr(10).join(_lines)
+
+    _action = _parts[0].lower()
+    if _action == 'add' and len(_parts) >= 3:
+        _event = _parts[1].strip()
+        _cmd = _parts[2].strip()
+        if _event not in _VALID_EVENTS:
+            return 'Invalid event: %s\nValid events: %s' % (_event, ', '.join(sorted(_VALID_EVENTS)))
+        _cfg = _load_merged()
+        _cfg.setdefault(_event, []).append({'matcher': '', 'hooks': [{'type': 'command', 'command': _cmd}]})
+        _save_hooks({k: _cfg[k] for k in _cfg})
+        return 'Added hook: %s -> %s' % (_event, _cmd)
+
+    if _action == 'remove' and len(_parts) >= 3:
+        _event = _parts[1].strip()
+        _cmd = _parts[2].strip()
+        _cfg = _load_merged()
+        if _event in _cfg:
+            _before = len(_cfg[_event])
+            _cfg[_event] = [_en for _en in _cfg[_event]
+                            if not any(_h.get('command', '') == _cmd for _h in (_en.get('hooks') or []))]
+            _save_hooks({k: _cfg[k] for k in _cfg})
+            return 'Removed %d hook(s) from %s' % (_before - len(_cfg[_event]), _event)
+        return 'No hooks for event %s' % _event
+
+    if _action == 'test' and len(_parts) >= 2:
+        _event = _parts[1].strip()
+        if _event not in _VALID_EVENTS:
+            return 'Invalid event: %s' % _event
+        _r = run_hook_event(_event, '', '{}')
+        return 'Hook test output for %s:\n%s' % (_event, _r or '(no hooks or no output)')
+
+    return 'Usage: /hooks [list|add <event> <cmd>|remove <event> <cmd>|test <event>]\nEvents: %s' % ', '.join(sorted(_VALID_EVENTS))
 
 def _history():
     _a = _agent()
