@@ -88,14 +88,19 @@ def _help():
         _lines.append('  %s - %s' % (_c, _d))
     return '\n'.join(_lines)
 
-# --- /clear: clear/clear.ts + conversation.ts:130,160 (reset messages + readFileState + cost) ---
+# --- /clear: clear/clear.ts + conversation.ts:130,160 (深化版 — 对齐 CC clearConversation) ---
+# CC: commands/clear/clear.ts → clearConversation: reset messages + readFileState + token/cost counters
 def _clear():
     _a = _agent()
     if _a is None:
         return 'No agent.'
     _a.messages = [{'role': 'system', 'content': _a.system_prompt}]
     globals().get('_CCPORT_READ_STATE', {}).clear()
-    return 'Conversation cleared. Context freed.'
+    globals()['_CCPORT_TOKENS_IN'] = 0
+    globals()['_CCPORT_TOKENS_OUT'] = 0
+    globals().get('_CCPORT_FILE_HISTORY', {}).clear()
+    globals().get('_CCPORT_TODOS', {}).clear()
+    return 'Conversation cleared. Context freed. (messages + readFileState + tokens + file history + todos reset)'
 
 # --- /compact: compact/compact.ts (compactConversation: 深化版，对齐 CC 算法) ---
 # CC: compactConversation(complex.ts:411-660) + getCompactPrompt(prompt.ts:293) +
@@ -211,32 +216,57 @@ def _model():
         _avail = chr(10) + 'Available: ' + ', '.join(_models)
     return 'Current model: %s%s%s' % (_a.model, _avail, chr(10) + 'Usage: /model <name> to switch (e.g. /model glm-5.1; must have quota).')
 
-# --- /cost: cost->usage (token/成本统计) ---
+# --- /cost: cost->usage (深化版 — 对齐 CC usage: token 估算 + ctx window% + model) ---
+# CC: commands/cost→usage (token/cost statistics with context window usage)
 def _cost():
     _a = _agent()
-    _nmsg = len(_a.messages) if _a else 0
-    _lines = ['Session usage:',
-              '  Messages in context: %d' % _nmsg]
-    _lines.append('  (Detailed token/cost accounting is a runtime analytics subsystem; message count shown here. Full /cost port deferred.)')
-    return '\n'.join(_lines)
+    _msgs = _a.messages if _a else []
+    _u = sum(len(str(m.get('content', ''))) for m in _msgs if m.get('role') == 'user')
+    _as = sum(len(str(m.get('content', ''))) for m in _msgs if m.get('role') == 'assistant')
+    _s = sum(len(str(m.get('content', ''))) for m in _msgs if m.get('role') == 'system'
+    _total = _u + _as + _s
+    _cjk = sum(1 for _c in str(_msgs) if chr(0x4e00) <= _c <= chr(0x9fff))
+    _est = int(_cjk * 0.5 + (_total - _cjk) * 0.25)
+    _ctx_pct = min(100, (_est * 100) // 200000)
+    _real_in = globals().get('_CCPORT_TOKENS_IN', 0)
+    _real_out = globals().get('_CCPORT_TOKENS_OUT', 0)
+    _lines = ['Usage:',
+              '  Model: %s' % (_a.model if _a else '?'),
+              '  Messages: %d (system=%d, user=%d, assistant=%d)' % (len(_msgs), 1 if _s else 0, sum(1 for m in _msgs if m.get('role')=='user'), sum(1 for m in _msgs if m.get('role')=='assistant')),
+              '  Estimated tokens: %d (ctx %d%% of 200K)' % (_est, _ctx_pct)]
+    if _real_in or _real_out:
+        _lines.append('  Real tokens: in=%d, out=%d, total=%d' % (_real_in, _real_out, _real_in + _real_out))
+    return chr(10).join(_lines)
 
-# --- /status: status/status.tsx (Settings>Status: cwd/model/git) ---
+# --- /status: status (深化版 — 对齐 CC Settings>Status: mode + tools + elapsed + compact) ---
+# CC: commands/status/status.tsx → Settings defaultTab="Status" (interactive panel)
+# CC Status shows: model, plan/account/org, cwd, permission mode, tool count, token/cost/time
 def _status():
-    import subprocess
+    import subprocess, time as _t
     _a = _agent()
     _cwd = os.getcwd()
     _branch = ''
+    _dirty = False
     try:
         _b = subprocess.run(['git', 'branch', '--show-current'], capture_output=True, text=True, timeout=5)
         _branch = (_b.stdout or '').strip()
+        _d = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, timeout=5)
+        _dirty = bool((_d.stdout or '').strip())
     except Exception:
         pass
+    _mode = globals().get('_CCPORT_MODE', 'default')
+    _ntools = len([k for k in LOCAL_TOOLS if not k.startswith('_')])
+    _msgs = _a.messages if _a else []
+    _chars = sum(len(str(m.get('content', ''))) for m in _msgs)
+    _est = _chars // 4
     _lines = ['Status:',
-              '  Working directory: %s' % _cwd,
               '  Model: %s' % (_a.model if _a else '(none)'),
-              '  Git branch: %s' % (_branch or '(not a git repo)'),
-              '  Messages: %d' % (len(_a.messages) if _a else 0)]
-    return '\n'.join(_lines)
+              '  Working directory: %s' % _cwd,
+              '  Git: %s%s' % (_branch or '(none)', ' *' if _dirty else ''),
+              '  Permission mode: %s' % _mode,
+              '  Tools: %d' % _ntools,
+              '  Messages: %d | Est tokens: %d (ctx %d%%)' % (len(_msgs), _est, min(100, (_est * 100) // 200000)]
+    return chr(10).join(_lines)
 
 # --- /context: context (显示 CLAUDE.md/git/env，复用 context.nx) ---
 def _context():
