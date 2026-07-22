@@ -215,21 +215,75 @@ def _context():
         return 'Context error: %s' % _e
 
 # --- /config: config/config.tsx (显示 settings) ---
+# --- /config: config (深化版 — 对齐 CC getInitialSettings + updateSettingsForSource) ---
+# CC: commands/config/config.tsx → Settings/Config.tsx (interactive picker)
+# + utils/settings/settings.ts:309 getSettingsForSource / :416 updateSettingsForSource / :812 getInitialSettings
+# 深化：get/set/list/edit 子命令，多源合并读取（user→project→local），持久化写入 settings.local.json
 def _config():
-    _paths = [os.path.join(os.getcwd(), '.claude', 'settings.local.json'),
-              os.path.join(os.getcwd(), '.claude', 'settings.json')]
-    _lines = ['Config:']
-    for _p in _paths:
-        if os.path.isfile(_p):
+    import json as _j
+    _home = os.path.expanduser('~')
+    _sources = [
+        ('user', os.path.join(_home, '.claude', 'settings.json')),
+        ('project', os.path.join(os.getcwd(), '.claude', 'settings.json')),
+        ('local', os.path.join(os.getcwd(), '.claude', 'settings.local.json')),
+    ]
+    _parts = (_args or '').strip().split(None, 2)
+    if not _parts or _parts[0] == 'list':
+        _merged = {}
+        _lines = ['Config (merged from all sources):']
+        for _src_name, _src_path in _sources:
+            if os.path.isfile(_src_path):
+                try:
+                    with open(_src_path, 'r', encoding='utf-8') as _f:
+                        _data = _j.load(_f) or {}
+                    _merged.update(_data)
+                    _lines.append('  [%s] %s (%d keys)' % (_src_name, _src_path, len(_data)))
+                except Exception:
+                    pass
+        if _merged:
+            _lines.append('')
+            _lines.append('Effective settings:')
+            for _k in sorted(_merged.keys()):
+                _lines.append('  %s: %s' % (_k, _j.dumps(_merged[_k], ensure_ascii=False)[:100]))
+        else:
+            _lines.append('  (no settings files found; using built-in defaults)')
+        _lines.append('')
+        _lines.append('Usage: /config [get|set|list] [key] [value]')
+        return chr(10).join(_lines)
+    _action = _parts[0].lower()
+    if _action == 'get' and len(_parts) >= 2:
+        _key = _parts[1]
+        for _src_name, _src_path in _sources:
+            if os.path.isfile(_src_path):
+                try:
+                    with open(_src_path, 'r', encoding='utf-8') as _f:
+                        _data = _j.load(_f) or {}
+                    if _key in _data:
+                        return '%s = %s (from %s)' % (_key, _j.dumps(_data[_key], ensure_ascii=False), _src_name)
+                except Exception:
+                    pass
+        return '%s = (not set)' % _key
+    if _action == 'set' and len(_parts) >= 3:
+        _key = _parts[1]
+        _val = _parts[2]
+        _target = os.path.join(os.getcwd(), '.claude', 'settings.local.json')
+        _data = {}
+        os.makedirs(os.path.dirname(_target), exist_ok=True) if os.path.dirname(_target) else None
+        if os.path.isfile(_target):
             try:
-                with open(_p, 'r', encoding='utf-8') as _f:
-                    _lines.append('--- %s ---' % _p)
-                    _lines.append(_f.read())
-            except Exception as _e:
-                _lines.append('%s: read error %s' % (_p, _e))
-    if len(_lines) == 1:
-        _lines.append('  (no settings files found; using built-in defaults)')
-    return '\n'.join(_lines)
+                with open(_target, 'r', encoding='utf-8') as _f:
+                    _data = _j.load(_f) or {}
+            except Exception:
+                _data = {}
+        try:
+            _parsed = _j.loads(_val)
+        except Exception:
+            _parsed = _val
+        _data[_key] = _parsed
+        with open(_target, 'w', encoding='utf-8') as _f:
+            _j.dump(_data, _f, ensure_ascii=False, indent=2)
+        return 'Set %s = %s (saved to %s)' % (_key, _j.dumps(_parsed, ensure_ascii=False), _target)
+    return 'Usage: /config [list|get <key>|set <key> <value>]'
 
 # --- /vim: vim/vim.ts (切换 editorMode normal<->vim) ---
 def _vim():
