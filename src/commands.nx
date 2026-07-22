@@ -265,7 +265,7 @@ def _status():
               '  Git: %s%s' % (_branch or '(none)', ' *' if _dirty else ''),
               '  Permission mode: %s' % _mode,
               '  Tools: %d' % _ntools,
-              '  Messages: %d | Est tokens: %d (ctx %d%%)' % (len(_msgs), _est, min(100, (_est * 100) // 200000)]
+              '  Messages: %d | Est tokens: %d (ctx %d%%)' % (len(_msgs), _est, min(100, (_est * 100) // 200000))]
     return chr(10).join(_lines)
 
 # --- /context: context (显示 CLAUDE.md/git/env，复用 context.nx) ---
