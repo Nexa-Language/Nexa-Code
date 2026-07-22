@@ -177,6 +177,19 @@ register_tool_hook('PostToolUse', _tool_post)
 
 # P0: Token Usage 提取——monkey-patch Coder._get_client 包装 create() 截获 usage
 _usage_acc = {'input': 0, 'output': 0, 'total': 0, 'last_input': 0, 'last_output': 0, 'last_total': 0}
+# P0 深化: 暴露 usage 到 globals（供 /cost /usage /status 读取真实 API token）
+# + 每模型成本累积（对齐 CC cost-tracker.ts addToTotalModelUsage 的 per-model 结构）
+# + session 计时起点（对齐 CC getTotalDuration wall-clock）
+globals().setdefault('_CCPORT_COST_STATE', {})
+globals().setdefault('_CCPORT_SESSION_T0', __import__('time').time())
+globals()['_CCPORT_USAGE'] = _usage_acc
+def _record_cost(_model):
+    _cs = globals().setdefault('_CCPORT_COST_STATE', {})
+    _mr = _cs.setdefault(_model, {'input': 0, 'output': 0, 'calls': 0})
+    _mr['input'] += _usage_acc['last_input']
+    _mr['output'] += _usage_acc['last_output']
+    _mr['calls'] += 1
+    globals()['_CCPORT_USAGE'] = _usage_acc
 _orig_get_client = Coder._get_client
 class _UsageWrapper:
     def __init__(self, _real):
@@ -219,6 +232,7 @@ class _UsageCompletionsWrapper:
                             _usage_acc['input'] += _usage_acc['last_input']
                             _usage_acc['output'] += _usage_acc['last_output']
                             _usage_acc['total'] += _usage_acc['last_total']
+                            _record_cost(kw.get('model', '?'))
                 return _wrap_stream(_gen)
             else:
                 _u = getattr(_resp, 'usage', None)
@@ -229,6 +243,7 @@ class _UsageCompletionsWrapper:
                     _usage_acc['input'] += _usage_acc['last_input']
                     _usage_acc['output'] += _usage_acc['last_output']
                     _usage_acc['total'] += _usage_acc['last_total']
+                    _record_cost(kw.get('model', '?'))
         except Exception:
             pass
         return _resp

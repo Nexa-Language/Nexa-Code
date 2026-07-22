@@ -29,6 +29,10 @@ fn run_command(cmd_line: string): string {
     python! """
 import os
 
+# P0 深化: 确保 session 计时/成本状态在所有模式可用（生产路径 run_json_events 启动时已设更早 t0）
+globals().setdefault('_CCPORT_SESSION_T0', __import__('time').time())
+globals().setdefault('_CCPORT_COST_STATE', {})
+
 # --- 解析 命令名 + 参数 (REPL.tsx:4011-4018) ---
 _line = (cmd_line or '').strip()
 if _line.startswith('/'):
@@ -88,19 +92,41 @@ def _help():
         _lines.append('  %s - %s' % (_c, _d))
     return '\n'.join(_lines)
 
-# --- /clear: clear/clear.ts + conversation.ts:130,160 (深化版 — 对齐 CC clearConversation) ---
-# CC: commands/clear/clear.ts → clearConversation: reset messages + readFileState + token/cost counters
+# --- /clear: clear/clear.ts + conversation.ts:70-281 (clearConversation 完整深化) ---
+# CC clearConversation: SessionEnd hooks → setMessages([]) → clearSessionCaches →
+#   setLastAPIRequest(null) → resetCostState() → readFileState.clear() → fileHistory cleared →
+#   clearAllPlanSlugs → clearSessionMetadata → regenerateSessionId → resetSessionFilePointer →
+#   processSessionStartHooks. 本深化对齐核心可移植项；session/task/MCP 重置是平台子系统。
 def _clear():
     _a = _agent()
     if _a is None:
         return 'No agent.'
+    # CC conversation.ts:89 executeSessionEndHooks('clear') — SessionEnd 钩子（best-effort）
+    try:
+        run_hook_event('SessionEnd', '', '{}')
+    except Exception:
+        pass
     _a.messages = [{'role': 'system', 'content': _a.system_prompt}]
+    # CC conversation.ts:160 readFileState.clear()
     globals().get('_CCPORT_READ_STATE', {}).clear()
-    globals()['_CCPORT_TOKENS_IN'] = 0
-    globals()['_CCPORT_TOKENS_OUT'] = 0
-    globals().get('_CCPORT_FILE_HISTORY', {}).clear()
-    globals().get('_CCPORT_TODOS', {}).clear()
-    return 'Conversation cleared. Context freed. (messages + readFileState + tokens + file history + todos reset)'
+    # CC conversation.ts:205 fileHistory snapshots cleared
+    globals().setdefault('_CCPORT_FILE_HISTORY', {}).clear()
+    # CC conversation.ts:157 resetCostState — 清成本累积器（原位重置 + 清每模型状态）
+    globals().pop('_CCPORT_COST_STATE', None)
+    _ua = globals().get('_usage_acc')
+    if isinstance(_ua, dict):
+        for _k in list(_ua.keys()):
+            _ua[_k] = 0
+    # CC conversation.ts:233 regenerateSessionId — 新 session 标记 + 重置计时
+    import time as _t, hashlib as _hl
+    globals()['_CCPORT_SESSION_ID'] = _hl.md5((os.getcwd() + str(_t.time())).encode()).hexdigest()[:12]
+    globals()['_CCPORT_SESSION_T0'] = _t.time()
+    # CC conversation.ts:275 processSessionStartHooks('clear') — SessionStart 钩子（best-effort）
+    try:
+        run_hook_event('SessionStart', '', '{}')
+    except Exception:
+        pass
+    return 'Conversation cleared. Context freed. (messages, file history, cost state, session id reset)'
 
 # --- /compact: compact/compact.ts (compactConversation: 深化版，对齐 CC 算法) ---
 # CC: compactConversation(complex.ts:411-660) + getCompactPrompt(prompt.ts:293) +
@@ -216,57 +242,65 @@ def _model():
         _avail = chr(10) + 'Available: ' + ', '.join(_models)
     return 'Current model: %s%s%s' % (_a.model, _avail, chr(10) + 'Usage: /model <name> to switch (e.g. /model glm-5.1; must have quota).')
 
-# --- /cost: cost->usage (深化版 — 对齐 CC usage: token 估算 + ctx window% + model) ---
-# CC: commands/cost→usage (token/cost statistics with context window usage)
+# --- /cost: cost.ts → formatTotalCost (cost-tracker.ts:229) 深化 ---
+# CC /cost 对订阅者显示订阅消息，否则 formatTotalCost()（总额 + 每模型 input/output/cache + 时长 + 行变更）。
+# 本深化：读真实 API usage（_CCPORT_USAGE/_CCPORT_COST_STATE，main.nx monkey-patch 累积），
+#   格式对齐 formatTotalCost（总额 + 每模型分项 + context window% + 模型名）。GLM 无 Claude 计价 → 标注。
 def _cost():
     _a = _agent()
-    _msgs = _a.messages if _a else []
-    _u = sum(len(str(m.get('content', ''))) for m in _msgs if m.get('role') == 'user')
-    _as = sum(len(str(m.get('content', ''))) for m in _msgs if m.get('role') == 'assistant')
-    _s = sum(len(str(m.get('content', ''))) for m in _msgs if m.get('role') == 'system'
-    _total = _u + _as + _s
-    _cjk = sum(1 for _c in str(_msgs) if chr(0x4e00) <= _c <= chr(0x9fff))
-    _est = int(_cjk * 0.5 + (_total - _cjk) * 0.25)
-    _ctx_pct = min(100, (_est * 100) // 200000)
-    _real_in = globals().get('_CCPORT_TOKENS_IN', 0)
-    _real_out = globals().get('_CCPORT_TOKENS_OUT', 0)
-    _lines = ['Usage:',
-              '  Model: %s' % (_a.model if _a else '?'),
-              '  Messages: %d (system=%d, user=%d, assistant=%d)' % (len(_msgs), 1 if _s else 0, sum(1 for m in _msgs if m.get('role')=='user'), sum(1 for m in _msgs if m.get('role')=='assistant')),
-              '  Estimated tokens: %d (ctx %d%% of 200K)' % (_est, _ctx_pct)]
-    if _real_in or _real_out:
-        _lines.append('  Real tokens: in=%d, out=%d, total=%d' % (_real_in, _real_out, _real_in + _real_out))
+    _ua = globals().get('_usage_acc') or globals().get('_CCPORT_USAGE') or {}
+    _cs = globals().get('_CCPORT_COST_STATE', {})
+    _model = _a.model if _a else '?'
+    _tot_in = _ua.get('input', 0) if isinstance(_ua, dict) else 0
+    _tot_out = _ua.get('output', 0) if isinstance(_ua, dict) else 0
+    _lines = ['Total cost:            (GLM runtime: not billed via Claude pricing — showing real token usage)']
+    if _tot_in or _tot_out:
+        _lines.append('Total usage:           %d input, %d output tokens (%d total)' % (_tot_in, _tot_out, _tot_in + _tot_out))
+    else:
+        _est = sum(len(str(m.get('content', ''))) for m in (_a.messages if _a else [])) // 4
+        _lines.append('Total usage:           ~%d tokens (estimated; no API usage recorded yet)' % _est)
+    # CC formatModelUsage: 每模型分项
+    if _cs:
+        for _m in sorted(_cs.keys()):
+            _u = _cs[_m]
+            _calls = _u.get('calls', 0)
+            _lines.append('%s:%s %d input, %d output (%d API call%s)' % (
+                _m, ' ' * max(1, 21 - len(_m) - 1), _u.get('input', 0), _u.get('output', 0), _calls, '' if _calls == 1 else 's'))
+    # context window% (CC ModelUsage.contextWindow)
+    _ctx = (_tot_in + _tot_out) or (sum(len(str(m.get('content', ''))) for m in (_a.messages if _a else [])) // 4)
+    _lines.append('Context window:        ~%d%% of 128K (model=%s)' % (min(100, (_ctx * 100) // 128000), _model))
     return chr(10).join(_lines)
 
-# --- /status: status (深化版 — 对齐 CC Settings>Status: mode + tools + elapsed + compact) ---
-# CC: commands/status/status.tsx → Settings defaultTab="Status" (interactive panel)
-# CC Status shows: model, plan/account/org, cwd, permission mode, tool count, token/cost/time
+# --- /status: status.tsx → Settings>Status tab 深化 ---
+# CC /status 是 Settings UI 组件（defaultTab="Status"）；行为=展示状态信息。本深化：补 mode/tool count/
+#   elapsed/auto-compact（对齐 Settings Status 面板字段）。UI 是平台层，文本对齐为诚实适配。
 def _status():
     import subprocess, time as _t
     _a = _agent()
     _cwd = os.getcwd()
     _branch = ''
-    _dirty = False
     try:
         _b = subprocess.run(['git', 'branch', '--show-current'], capture_output=True, text=True, timeout=5)
         _branch = (_b.stdout or '').strip()
-        _d = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, timeout=5)
-        _dirty = bool((_d.stdout or '').strip())
     except Exception:
         pass
     _mode = globals().get('_CCPORT_MODE', 'default')
-    _ntools = len([k for k in LOCAL_TOOLS if not k.startswith('_')])
+    _lt = globals().get('LOCAL_TOOLS', {})
+    _ntools = len(_lt) if isinstance(_lt, dict) else 0
+    _t0 = globals().get('_CCPORT_SESSION_T0')
+    _elapsed = ('%ds' % int(_t.time() - _t0)) if _t0 else '?'
     _msgs = _a.messages if _a else []
-    _chars = sum(len(str(m.get('content', ''))) for m in _msgs)
-    _est = _chars // 4
+    _est = sum(len(str(m.get('content', ''))) for m in _msgs) // 4
     _lines = ['Status:',
-              '  Model: %s' % (_a.model if _a else '(none)'),
               '  Working directory: %s' % _cwd,
-              '  Git: %s%s' % (_branch or '(none)', ' *' if _dirty else ''),
+              '  Model: %s' % (_a.model if _a else '(none)'),
+              '  Git branch: %s' % (_branch or '(not a git repo)'),
               '  Permission mode: %s' % _mode,
-              '  Tools: %d' % _ntools,
-              '  Messages: %d | Est tokens: %d (ctx %d%%)' % (len(_msgs), _est, min(100, (_est * 100) // 200000))]
-    return chr(10).join(_lines)
+              '  Tools available: %d' % _ntools,
+              '  Messages in context: %d' % len(_msgs),
+              '  Session elapsed: %s' % _elapsed,
+              '  Auto-compact: ~%d%% of 128K' % min(100, (_est * 100) // 128000)]
+    return '\n'.join(_lines)
 
 # --- /context: context (显示 CLAUDE.md/git/env，复用 context.nx) ---
 def _context():
@@ -556,29 +590,62 @@ def _mcp():
     _lines.append('Use MCPTool / ListMcpResources / ReadMcpResource to interact.')
     return chr(10).join(_lines)
 
-# --- /copy: copy last assistant reply to clipboard ---
+# --- /copy: copy.tsx 深化（collectRecentAssistantTexts + /copy N + temp 文件双写）---
+# CC copy.tsx:44 collectRecentAssistantTexts（最新优先，跳 tool-use-only/api-error 轮）
+# CC copy.tsx:243 /copy N 回溯 N-1（1=最新）；copy.tsx:69-74 clipboard best-effort + temp 文件可靠 fallback
 def _copy():
-    import subprocess as _sp, sys as _sys
+    import subprocess as _sp, sys as _sys, os as _os, tempfile as _tf
     _a = _agent()
     if not _a:
         return 'No agent.'
-    _reply = ''
+    # CC collectRecentAssistantTexts: 倒序收集有文本的 assistant 轮（跳空=tool-use-only），cap 20
+    _texts = []
     for _m in reversed(_a.messages):
-        if _m.get('role') == 'assistant':
-            _reply = str(_m.get('content', ''))
+        if _m.get('role') != 'assistant':
+            continue
+        _c = str(_m.get('content', '')).strip()
+        if _c:
+            _texts.append(_c)
+        if len(_texts) >= 20:
             break
-    if not _reply:
-        return 'No assistant reply to copy.'
+    if not _texts:
+        return 'No assistant message to copy.'
+    # CC copy.tsx:243 /copy N: N>=1, age = N-1
+    _arg = (_args or '').strip()
+    _age = 0
+    if _arg:
+        try:
+            _n = int(_arg)
+        except ValueError:
+            return 'Usage: /copy [N] where N is 1 (latest), 2, 3, ... Got: %s' % _arg
+        if _n < 1 or _n > len(_texts):
+            return 'Only %d assistant message(s) available to copy' % len(_texts)
+        _age = _n - 1
+    _text = _texts[_age]
+    # CC copy.tsx:76 setClipboard best-effort（OSC 52 需终端支持）
+    _clip_ok = True
     try:
         if _sys.platform == 'win32':
-            _sp.run(['clip'], input=_reply, text=True, encoding='utf-8', errors='replace')
+            _sp.run(['clip'], input=_text, text=True, encoding='utf-8', errors='replace')
         elif _sys.platform == 'darwin':
-            _sp.run(['pbcopy'], input=_reply, text=True)
+            _sp.run(['pbcopy'], input=_text, text=True)
         else:
-            _sp.run(['xclip', '-selection', 'clipboard'], input=_reply, text=True)
-        return 'Copied %d chars to clipboard.' % len(_reply)
-    except Exception as _e:
-        return 'Copy failed: %s' % _e
+            _sp.run(['xclip', '-selection', 'clipboard'], input=_text, text=True)
+    except Exception:
+        _clip_ok = False
+    # CC copy.tsx:69-74 temp 文件 fallback（clipboard 可能不可靠）
+    _nlines = _text.count(chr(10)) + 1
+    _dir = _os.path.join(_tf.gettempdir(), 'claude')
+    try:
+        _os.makedirs(_dir, exist_ok=True)
+        _fp = _os.path.join(_dir, 'response.md')
+        with open(_fp, 'w', encoding='utf-8') as _f:
+            _f.write(_text)
+        if _clip_ok:
+            return 'Copied to clipboard (%d characters, %d lines)\nAlso written to %s' % (len(_text), _nlines, _fp)
+        return 'Clipboard unavailable; written to %s (%d characters, %d lines)' % (_fp, len(_text), _nlines)
+    except Exception:
+        return 'Copied %d chars to clipboard.' % len(_text) if _clip_ok else 'Copy failed (no clipboard, no temp write).'
 
 # --- /usage: detailed token stats ---
 def _usage():
@@ -594,26 +661,46 @@ def _usage():
               '  Context window: ~%d%% of 200K' % min(100, (_total//4*100)//200000)]
     return chr(10).join(_lines)
 
-# --- /export: export conversation to markdown ---
+# --- /export: export.tsx 深化（plain text .txt + smart filename + args 直写）---
+# CC export.tsx:61 renderMessagesToPlainText（纯文本，非 markdown）；:21 extractFirstPrompt；
+# :49 sanitizeFilename；:11 formatTimestamp(YYYY-MM-DD-HHMMSS)；:73 args → 直写指定文件名(.txt)
 def _export():
-    import os as _os, time as _t
+    import os as _os, time as _t, re as _re
     _a = _agent()
     if not _a:
         return 'No agent.'
-    _lines = ['# Claude Code Conversation Export', '']
+    # CC renderMessagesToPlainText: 纯文本 [role]\n<content>
+    _lines = []
     for _m in _a.messages:
         _role = _m.get('role', '?')
-        _content = str(_m.get('content', ''))
         if _role == 'system':
             continue
-        _lines.append('## %s' % ('User' if _role == 'user' else 'Assistant'))
+        _lines.append('[%s]' % ('user' if _role == 'user' else 'assistant'))
+        _lines.append(str(_m.get('content', '')))
         _lines.append('')
-        _lines.append(_content)
-        _lines.append('')
-    _fname = 'conversation-%d.md' % int(_t.time())
-    with open(_fname, 'w', encoding='utf-8') as _f:
-        _f.write(chr(10).join(_lines))
-    return 'Exported %d messages to %s' % (len(_a.messages), _fname)
+    _content = chr(10).join(_lines)
+    # CC export.tsx:73 args → 直写到指定文件名（强制 .txt）
+    _arg = (_args or '').strip()
+    if _arg:
+        _fn = _arg if _arg.endswith('.txt') else (_re.sub(r'\.[^.]+$', '', _arg) + '.txt')
+        _fp = _os.path.join(_os.getcwd(), _fn)
+        with open(_fp, 'w', encoding='utf-8') as _f:
+            _f.write(_content)
+        return 'Conversation exported to: %s' % _fp
+    # CC export.tsx:92 default filename = {timestamp}-{sanitized首问}.txt
+    _ts = _t.strftime('%Y-%m-%d-%H%M%S')
+    _first = ''
+    for _m in _a.messages:
+        if _m.get('role') == 'user':
+            _first = str(_m.get('content', '')).split(chr(10))[0][:49]
+            break
+    _san = _re.sub(r'[^a-z0-9\s-]', '', _first.lower())
+    _san = _re.sub(r'[\s-]+', '-', _san).strip('-')
+    _fn = ('%s-%s.txt' % (_ts, _san)) if _san else ('conversation-%s.txt' % _ts)
+    _fp = _os.path.join(_os.getcwd(), _fn)
+    with open(_fp, 'w', encoding='utf-8') as _f:
+        _f.write(_content)
+    return 'Conversation exported to: %s (%d messages)' % (_fp, len(_a.messages))
 
 # --- /undo: restore last file snapshot ---
 def _undo():
@@ -1014,7 +1101,7 @@ def _session():
 
 _DISPATCH = {
     'help': _help, 'clear': _clear, 'compact': _compact, 'model': _model,
-    'cost': _usage, 'usage': _usage, 'stats': _sessionstats, 'status': _status,
+    'cost': _cost, 'usage': _usage, 'stats': _sessionstats, 'status': _status,
     'context': _context, 'config': _config, 'vim': _vim, 'fast': _fast,
     'rewind': _rewind, 'resume': _resume, 'exit': _exit, 'quit': _exit,
     'init': _init, 'doctor': _doctor, 'add-dir': _add_dir, 'memory': _memory,

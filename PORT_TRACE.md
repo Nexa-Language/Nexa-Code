@@ -49,6 +49,11 @@
 | /model | commands/model/model.tsx | 显示字符串 | **full**: 运行时切换 + 持久化 secrets.nxs + 列可用模型 |
 | /rewind | commands/rewind/rewind.ts | 数值回退 | **full**: list/search/numeric rewind |
 | Bash | BashTool.tsx:440-470 | subprocess+危险检测 | **full**: + sleep detection (对齐 detectBlockedSleepPattern) |
+| /clear | clear/conversation.ts:70-281 | reset messages | **full**: SessionEnd hook + resetCostState + fileHistory.clear + readFileState.clear + regenerateSessionId + SessionStart hook（clearConversation 完整状态清理） |
+| /cost | cost/cost.ts + cost-tracker.ts:229 formatTotalCost | 消息数 | **full**: 真实 API usage(_CCPORT_USAGE/_CCPORT_COST_STATE,main.nx monkey-patch 累积) + 每模型 input/output 分项 + context window% + 模型名（对齐 formatTotalCost/formatModelUsage） |
+| /status | status/status.tsx(Settings>Status) | cwd/model/git | **full**: + mode + tool count + session elapsed + auto-compact%（Status 面板字段对齐；UI 是平台层，文本适配） |
+| /export | export/export.tsx | markdown 导出 | **full**: plain text .txt（renderMessagesToPlainText 非 markdown）+ extractFirstPrompt/sanitizeFilename/formatTimestamp 智能文件名 + args 直写 |
+| /copy | copy/copy.tsx | Windows clip | **full**: collectRecentAssistantTexts(跳 tool-use-only) + /copy N 回溯 + clipboard best-effort + temp 文件双写 fallback |
 
 | Nexa 命令 | claude-code-ts 源 | 忠实度 | 备注 |
 |---|---|---|---|
