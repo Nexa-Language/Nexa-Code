@@ -34,6 +34,16 @@ _mode = globals().get('_CCPORT_MODE', 'default')
 if _mode == 'plan':
     return '[Permission] Bash is not allowed in plan mode (read-only).'
 
+# CC BashTool.tsx:459-470 detectBlockedSleepPattern — sleep N (N>=2) as first command → warn agent
+_cmd_parts = _cmd.strip().split()
+if _cmd_parts and _cmd_parts[0] == 'sleep':
+    import re as _re
+    _sm = _re.match(r'^sleep\s+(\d+)\s*$', _cmd.strip())
+    if _sm and int(_sm.group(1)) >= 2:
+        return ('Sleep %ss detected. Don sleep between commands — just run the next command directly.\n'
+                'If you need to poll for a condition, check the condition in a loop instead of sleeping.\n'
+                '(CC blocks bare sleep >= 2s to prevent wasted turns.)') % int(_sm.group(1))
+
 # P0-2 Bash 安全深化：危险命令检测（对齐 CC dangerousPatterns.ts + bashSecurity.ts）
 _dangerous = [
     'rm -rf /', 'rm -rf ~', 'rm -rf *', 'rm -rf .',

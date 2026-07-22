@@ -329,6 +329,7 @@ TESTS = [
     ('EdgeCases', test_edge_cases),
     ('ExtraTools', test_extra_tools),
     ('MoreTools', test_more_tools),
+    ('DeepenedCmds', test_deepened_commands),
 ]
 
 for name, fn in TESTS:
@@ -349,3 +350,44 @@ for name, status, detail in RESULTS:
 print(f'\n{PASS} PASS / {FAIL} FAIL / {SKIP} SKIP')
 print('='*60)
 sys.exit(1 if FAIL > 0 else 0)
+
+def test_deepened_commands():
+    # /compact deepen: 9-section prompt + formatCompactSummary + keep recent
+    main.Coder.messages = [{'role':'system','content':'sys'}]
+    for i in range(6):
+        main.Coder.messages.append({'role':'user','content':'msg %d' % i})
+        main.Coder.messages.append({'role':'assistant','content':'reply %d' % i})
+    r = main.run_command('/compact')
+    check('Compact.deepen', 'compacted' in r.lower() or 'compact' in r.lower(), f'应压缩: {r[:60]}')
+    # /permissions add/remove
+    r = main.run_command('/permissions add deny Bash(curl:*)')
+    check('Perm.add', 'added' in r.lower(), f'应添加: {r[:50]}')
+    r = main.run_command('/permissions remove deny Bash(curl:*)')
+    check('Perm.remove', 'removed' in r.lower(), f'应删除: {r[:50]}')
+    # /config get/set
+    r = main.run_command('/config set deepentest \'hello\'')
+    check('Config.set', 'set' in r.lower() or 'saved' in r.lower(), f'应保存: {r[:50]}')
+    r = main.run_command('/config get deepentest')
+    check('Config.get', 'hello' in r, f'应读取: {r[:50]}')
+    # /hooks add/remove
+    r = main.run_command('/hooks add Stop echo testhook')
+    check('Hooks.add', 'added' in r.lower(), f'应添加: {r[:50]}')
+    r = main.run_command('/hooks remove Stop echo testhook')
+    check('Hooks.remove', 'removed' in r.lower() or 'hook' in r.lower(), f'应删除: {r[:50]}')
+    # /rewind list/search
+    main.Coder.messages = [{'role':'system','content':'sys'},{'role':'user','content':'find me here'},{'role':'assistant','content':'reply'}]
+    r = main.run_command('/rewind list')
+    check('Rewind.list', 'message' in r.lower() or 'find' in r, f'应列消息: {r[:60]}')
+    r = main.run_command('/rewind search find')
+    check('Rewind.search', 'match' in r.lower() or 'find' in r.lower(), f'应搜到: {r[:50]}')
+    # /model show
+    r = main.run_command('/model')
+    check('Model.show', 'model' in r.lower() and 'glm' in r.lower(), f'应显示模型: {r[:60]}')
+    # /resume list
+    r = main.run_command('/resume list')
+    check('Resume.list', 'session' in r.lower() or 'no' in r.lower(), f'应列出/报空: {r[:50]}')
+    # Bash sleep detection
+    r = main.Bash('sleep 5', 0, False)
+    check('Bash.sleep', 'sleep' in r.lower() and 'detected' in r.lower(), f'应检测: {r[:60]}')
+    r = main.Bash('echo ok', 0, False)
+    check('Bash.normal', 'ok' in r, f'应正常: {r[:30]}')
