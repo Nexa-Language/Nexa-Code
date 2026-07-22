@@ -329,7 +329,7 @@ TESTS = [
     ('EdgeCases', test_edge_cases),
     ('ExtraTools', test_extra_tools),
     ('MoreTools', test_more_tools),
-    ('DeepenedCmds', test_deepened_commands),
+    ('Deepened', test_deepened),
 ]
 
 for name, fn in TESTS:
