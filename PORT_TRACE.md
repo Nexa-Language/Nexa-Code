@@ -37,7 +37,18 @@
 
 | _(已并入上表 NotebookEdit)_ notebook_edit | `packages/builtin-tools/src/tools/NotebookEditTool/` | full | 见 `src/tools/notebook.nx` |
 
-## Phase 3 — 命令（逐个）  ✅ 完成（build + GLM 实跑验证通过，2026-06-25）
+## Phase 3 — 命令（逐个）  ✅ 完成 + 深化（2026-07-09）
+### 命令深化记录（partial → full）
+| 命令 | CC 源 | 深化前 | 深化后 |
+|---|---|---|---|
+| /compact | compact.ts:411-660 + prompt.ts:293-340 | 一句话摘要 | **full**: CC 9-section prompt + formatCompactSummary(strip analysis) + 保留近4条 + getCompactUserSummaryMessage framing |
+| /permissions | permissions/permissions.tsx + permissionSetup.ts | display-only | **full**: add/remove/list 子命令 |
+| /config | commands/config/ + settings.ts:309,416,812 | cat settings.json | **full**: get/set/list + 多源合并 + 持久化 |
+| /resume | commands/resume/resume.tsx | stub | **partial**: session list + load by path（交互 picker 是 UI 层） |
+| /hooks | commands/hooks/hooks.tsx | display-only | **full**: add/remove/test/list + 多源合并 + 持久化 |
+| /model | commands/model/model.tsx | 显示字符串 | **full**: 运行时切换 + 持久化 secrets.nxs + 列可用模型 |
+| /rewind | commands/rewind/rewind.ts | 数值回退 | **full**: list/search/numeric rewind |
+| Bash | BashTool.tsx:440-470 | subprocess+危险检测 | **full**: + sleep detection (对齐 detectBlockedSleepPattern) |
 
 | Nexa 命令 | claude-code-ts 源 | 忠实度 | 备注 |
 |---|---|---|---|
