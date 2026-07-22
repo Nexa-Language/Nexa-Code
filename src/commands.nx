@@ -325,11 +325,23 @@ def _rewind():
     _a.messages = _kept + _rest[:len(_rest) - _n * 2] if len(_rest) >= _n * 2 else _kept
     return 'Rewound %d turn(s).' % _n
 
-# --- /resume: resume (列出/恢复会话；CC 走会话存储 + UI) ---
+# --- /resume: resume (深化版 — 对齐 CC resume.tsx: session 列表 + 选择 + 恢复) ---
+# CC: commands/resume/resume.tsx → LogSelector (interactive picker)
+# + utils/sessionStorage.ts: listSessions + loadFullLog + readTranscriptForLoad
+# 深化：列出 sessions + 按 ID/路径恢复（调用 harness.nx load_session）
 def _resume():
-    return ('Resume: CC lists previous sessions from session storage and loads one (UI picker). '
-            'Session storage + transcript resume is a platform subsystem; not ported in Phase 3. '
-            'Use a fresh session or /clear.')
+    _arg = (_args or '').strip()
+    if not _arg or _arg == 'list':
+        _listing = list_sessions()
+        if 'No saved' in _listing or not _listing.strip():
+            return 'No previous sessions found.\nUse /clear for a fresh session or save one with the session being compacted/ended.'
+        return 'Available sessions:\n' + _listing
+    # CC resume with arg: load specific session by path or ID
+    try:
+        _result = load_session(_arg)
+        return _result
+    except Exception as _e:
+        return 'Resume failed: %s\nRun /resume to list available sessions.' % _e
 
 # --- /exit: exit/exit.tsx (gracefulShutdown) ---
 def _exit():
