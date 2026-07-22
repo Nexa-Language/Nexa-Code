@@ -54,6 +54,10 @@
 | /status | status/status.tsx(Settings>Status) | cwd/model/git | **full**: + mode + tool count + session elapsed + auto-compact%（Status 面板字段对齐；UI 是平台层，文本适配） |
 | /export | export/export.tsx | markdown 导出 | **full**: plain text .txt（renderMessagesToPlainText 非 markdown）+ extractFirstPrompt/sanitizeFilename/formatTimestamp 智能文件名 + args 直写 |
 | /copy | copy/copy.tsx | Windows clip | **full**: collectRecentAssistantTexts(跳 tool-use-only) + /copy N 回溯 + clipboard best-effort + temp 文件双写 fallback |
+| /review | review.ts (LOCAL_REVIEW_PROMPT, type=prompt) | git diff dump | **full**: 忠实移植为 prompt 命令（__AS_PROMPT__ → agent 跑 gh pr list/view/diff + 结构化 review：correctness/conventions/perf/test/security） |
+| /pr | commit-push-pr.ts (type=prompt, Git Safety Protocol) | git push+gh subprocess | **full**: 忠实移植为 prompt 命令（agent 执行 branch→commit→push→gh pr create/edit + Git Safety Protocol + 短 title 规则） |
+| /undo | (CC 无 /undo 命令) fileHistory.ts analogue | 单快照恢复 | **full**: + /undo list 列 tracked files + 快照数；LIFO 恢复（fileHistory checkpoint 恢复语义） |
+| /git | (CC 无 /git 命令，CC 用原生 git via Bash) | 子命令拼 CLI | **partial(自创)**: 扩充子命令(add/restore/checkout/fetch/rebase) + unknown 处理；诚实标注非 CC 源 |
 
 | Nexa 命令 | claude-code-ts 源 | 忠实度 | 备注 |
 |---|---|---|---|

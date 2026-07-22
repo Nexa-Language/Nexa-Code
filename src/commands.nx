@@ -702,35 +702,57 @@ def _export():
         _f.write(_content)
     return 'Conversation exported to: %s (%d messages)' % (_fp, len(_a.messages))
 
-# --- /undo: restore last file snapshot ---
+# --- /undo: CC 无 /undo 命令；fileHistory 快照恢复（utils/fileHistory.ts analogue）深化 ---
+# CC 的 undo 行为 = rewind checkpoint 恢复 tracked files 到某快照点（fileHistory snapshots + trackedFiles）。
+# Nexa /undo = _CCPORT_FILE_HISTORY 快照恢复。深化：+ /undo list 列出 tracked files + 快照数。
 def _undo():
-    _hist = globals().get('_CCPORT_FILE_HISTORY', {})
-    if not _hist:
-        return 'Nothing to undo (no file history snapshots).'
     import os as _os, shutil as _shu
+    _hist = globals().get('_CCPORT_FILE_HISTORY', {})
+    _arg = (_args or '').strip()
+    if _arg == 'list':
+        if not _hist:
+            return 'No file history snapshots. (snapshots created on Edit/Write via snapshot_file)'
+        _lines = ['File history (tracked files: %d):' % len(_hist)]
+        for _fp, _stack in _hist.items():
+            _lines.append('  %s — %d snapshot(s)' % (_fp, len(_stack)))
+        return chr(10).join(_lines)
+    if not _hist:
+        return 'Nothing to undo (no file history snapshots). Run /undo list to inspect.'
+    # LIFO：恢复最近一个 tracked file 的最近快照
     for _fp in reversed(list(_hist.keys())):
         _stack = _hist[_fp]
         if _stack:
             _bak = _stack.pop()
             if _os.path.isfile(_bak):
                 _shu.copy2(_bak, _fp)
-                return 'Undo: restored %s from snapshot.' % _fp
+                return 'Undo: restored %s from snapshot (%d remaining for this file).' % (_fp, len(_stack))
     return 'No snapshots to restore.'
 
-# --- /review: git diff code review ---
+# --- /review: review.ts (LOCAL_REVIEW_PROMPT, type=prompt) 深化 ---
+# CC /review 是 prompt 命令：getPromptForCommand → LOCAL_REVIEW_PROMPT（agent 跑 gh pr list/view/diff + 结构化 review）。
+# 本深化：忠实移植为 prompt 命令（__AS_PROMPT__ 路由到 agent），而非 dump git diff（CC 源无 diff-dump 行为）。
 def _review():
-    import subprocess as _sp
-    try:
-        _diff = _sp.run(['git', 'diff'], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
-        _diff_text = (_diff.stdout or '').strip()
-    except Exception:
-        _diff_text = ''
-    if not _diff_text:
-        _diff = _sp.run(['git', 'diff', '--cached'], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
-        _diff_text = (_diff.stdout or '').strip()
-    if not _diff_text:
-        return 'No changes to review (git diff is empty).'
-    return 'Git diff (%d chars). Use the Agent tool to review:\n%s' % (len(_diff_text), _diff_text[:2000])
+    _pr = (_args or '').strip()
+    _prompt = (
+        'You are an expert code reviewer. Follow these steps:' + chr(10) +
+        '1. If no PR number is provided in the args, run `gh pr list` to show open PRs' + chr(10) +
+        '2. If a PR number is provided, run `gh pr view <number>` to get PR details' + chr(10) +
+        '3. Run `gh pr diff <number>` to get the diff (if no gh/PR, fall back to `git diff`)' + chr(10) +
+        '4. Analyze the changes and provide a thorough code review:' + chr(10) +
+        '   - Overview of what the PR does' + chr(10) +
+        '   - Code quality and style' + chr(10) +
+        '   - Specific suggestions for improvements' + chr(10) +
+        '   - Potential issues or risks' + chr(10) + chr(10) +
+        'Keep your review concise but thorough. Focus on:' + chr(10) +
+        '- Code correctness' + chr(10) +
+        '- Following project conventions' + chr(10) +
+        '- Performance implications' + chr(10) +
+        '- Test coverage' + chr(10) +
+        '- Security considerations' + chr(10) + chr(10) +
+        'Format your review with clear sections and bullet points.' + chr(10) + chr(10) +
+        'PR number: %s' % _pr
+    )
+    return '__AS_PROMPT__:' + _prompt
 
 # --- /share: share conversation ---
 def _share():
@@ -752,7 +774,8 @@ def _share():
         _f.write(chr(10).join(_lines))
     return 'Shared session saved to %s (%d messages)' % (_fname, len(_a.messages))
 
-# --- /git command family ---
+# --- /git: CC 无 /git 命令（CC 用原生 git via Bash）；本命令为便利封装（自创，非 CC 源）---
+# 深化：扩充子命令集（add/restore/checkout/fetch/rebase），默认 status --short。
 def _git():
     import subprocess as _sp
     _sub = (_args or '').strip().split()
@@ -764,15 +787,22 @@ def _git():
         'branch': ['branch', '-a'],
         'blame': ['blame'] + _rest,
         'stash': ['stash', 'list'] if not _rest else (['stash'] + _rest),
-        'diff': ['diff'],
+        'diff': ['diff'] + _rest,
         'show': ['show'] + _rest,
-        'cherry-pick': ['cherry-pick'] + _rest,
-        'merge': ['merge'] + _rest,
-        'push': ['push'] + _rest,
+        'add': ['add'] + (_rest or ['-A']),
+        'restore': ['restore'] + _rest,
+        'checkout': ['checkout'] + _rest,
+        'fetch': ['fetch'] + _rest,
         'pull': ['pull'] + _rest,
+        'push': ['push'] + _rest,
+        'merge': ['merge'] + _rest,
+        'rebase': ['rebase'] + _rest,
+        'cherry-pick': ['cherry-pick'] + _rest,
         'commit': ['commit'] + _rest,
     }
-    _args_list = _git_map.get(_cmd, ['status', '--short'])
+    _args_list = _git_map.get(_cmd)
+    if _args_list is None:
+        return 'Unknown git subcommand: %s\nAvailable: %s' % (_cmd, ', '.join(sorted(_git_map.keys())))
     try:
         _p = _sp.run(['git'] + _args_list, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
         _out = (_p.stdout or '').strip()
@@ -821,21 +851,33 @@ def _mcp_manage():
         return 'Server not found: %s' % _name
     return 'Usage: /mcp [list|add <name> <command>|remove <name>]'
 
-# --- /pr: create PR (git push + gh pr create) ---
+# --- /pr: commit-push-pr.ts (type=prompt, Git Safety Protocol + allowedTools) 深化 ---
+# CC /pr 是 prompt 命令：getPromptContent → 结构化 commit-push-pr 流程 + Git Safety Protocol。
+# 本深化：忠实移植为 prompt 命令（agent 执行 branch→commit→push→gh pr create/edit），而非直接 subprocess（CC 源无直接执行）。
 def _pr():
-    import subprocess as _sp
-    _title = _args or 'Auto PR from Nexa Claude Code'
-    try:
-        _p1 = _sp.run(['git', 'push'], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
-        if _p1.returncode != 0:
-            return 'git push failed: %s' % (_p1.stderr or _p1.stdout)[:200]
-        _p2 = _sp.run(['gh', 'pr', 'create', '--title', _title, '--body', 'Created from Nexa Claude Code'],
-                      capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
-        if _p2.returncode == 0:
-            return 'PR created: %s' % (_p2.stdout or '').strip()
-        return 'gh pr create failed (is gh installed?): %s' % (_p2.stderr or '')[:200]
-    except Exception as _e:
-        return '/pr failed: %s' % _e
+    _extra = (chr(10) + chr(10) + '## Additional instructions from user' + chr(10) + chr(10) + _args.strip()) if (_args or '').strip() else ''
+    _prompt = (
+        '## Context' + chr(10) +
+        '- `git status`: run `git status`' + chr(10) +
+        '- `git diff HEAD`: run `git diff HEAD`' + chr(10) +
+        '- `git branch --show-current`: run `git branch --show-current`' + chr(10) + chr(10) +
+        '## Git Safety Protocol' + chr(10) +
+        '- NEVER update the git config' + chr(10) +
+        '- NEVER run destructive/irreversible git commands (push --force, hard reset) unless explicitly requested' + chr(10) +
+        '- NEVER skip hooks (--no-verify, --no-gpg-sign) unless explicitly requested' + chr(10) +
+        '- NEVER force push to main/master' + chr(10) +
+        '- Do not commit files that likely contain secrets (.env, credentials.json)' + chr(10) +
+        '- Never use git commands with the -i flag (git rebase -i / git add -i)' + chr(10) + chr(10) +
+        '## Your task' + chr(10) +
+        'Analyze all changes that will be included in the pull request (look at ALL commits from the diff, not just the latest).' + chr(10) +
+        '1. If on the default branch (main/master), create a new branch first (e.g. username/feature-name)' + chr(10) +
+        '2. Create a single commit with an appropriate message using heredoc syntax' + chr(10) +
+        '3. Push the branch to origin' + chr(10) +
+        '4. If a PR already exists for this branch, update it with `gh pr edit`; otherwise create one with `gh pr create --title "<short>" --body "## Summary\\n<bullets>\\n\\n## Test plan\\n<checklist>"`' + chr(10) +
+        '   - Keep PR titles short (under 70 characters). Use the body for details.' + chr(10) +
+        'Return the PR URL when done.' + _extra
+    )
+    return '__AS_PROMPT__:' + _prompt
 
 # --- /login: API key validation + provider info ---
 def _login():
