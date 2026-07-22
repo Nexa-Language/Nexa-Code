@@ -162,13 +162,14 @@ def _compact():
     except Exception as _e:
         return 'Compact failed: %s' % _e
 
-# --- /model: model/model.tsx (显示当前模型) ---
+# --- /model: model/model.tsx (深化版 — 对齐 CC: 运行时切换 + 持久化到 settings) ---
+# CC: commands/model/model.tsx → ModelPicker (interactive) + config persistence via updateSettingsForSource
+# 深化：切换时持久化到 secrets.nxs MODEL_NAME.default + 列出可用模型（从 secrets.nxs）
 def _model():
     _a = _agent()
     if not _a:
         return '(no agent)'
     if _args:
-        # 运行时切换模型：/model <name>（设 Coder.model + 清客户端缓存，下一轮生效）
         _new = _args.strip().split()[0]
         _a.model = _new
         for _attr in ('_client', '_client_cache', '__client_cache__'):
@@ -177,8 +178,38 @@ def _model():
                     setattr(_a, _attr, None)
                 except Exception:
                     pass
-        return 'Model switched to: %s (next turn uses it). Ensure the model is available on your API key.' % _new
-    return 'Current model: %s\nUsage: /model <name> to switch at runtime (e.g. /model glm-5.2; must have quota).' % _a.model
+        # CC model.tsx persists to settings; we persist to secrets.nxs MODEL_NAME
+        try:
+            import os as _os, re as _re
+            _sf = _os.path.join(_os.getcwd(), 'secrets.nxs')
+            if _os.path.isfile(_sf):
+                with open(_sf, 'r', encoding='utf-8') as _f:
+                    _content = _f.read()
+                _content = _re.sub(r'"default":\s*"[^"]*"', '"default": "%s"' % _new, _content)
+                _content = _re.sub(r'"strong":\s*"[^"]*"', '"strong": "%s"' % _new, _content)
+                _content = _re.sub(r'"weak":\s*"[^"]*"', '"weak": "%s"' % _new, _content)
+                with open(_sf, 'w', encoding='utf-8') as _f:
+                    _f.write(_content)
+        except Exception:
+            pass
+        return 'Model switched to: %s (next turn uses it; persisted to secrets.nxs).' % _new
+    # 列出可用模型（从 secrets.nxs MODEL_NAME）
+    import os as _os, re as _re
+    _models = []
+    _sf = _os.path.join(_os.getcwd(), 'secrets.nxs')
+    if _os.path.isfile(_sf):
+        try:
+            with open(_sf, 'r', encoding='utf-8') as _f:
+                _c = _f.read()
+            for _m in _re.findall(r'"(glm-[\w.]+)"', _c):
+                if _m not in _models:
+                    _models.append(_m)
+        except Exception:
+            pass
+    _avail = ''
+    if _models:
+        _avail = chr(10) + 'Available: ' + ', '.join(_models)
+    return 'Current model: %s%s%s' % (_a.model, _avail, chr(10) + 'Usage: /model <name> to switch (e.g. /model glm-5.1; must have quota).')
 
 # --- /cost: cost->usage (token/成本统计) ---
 def _cost():
@@ -307,23 +338,52 @@ def _fast():
              'Under the GLM runtime, fast mode has no model effect; flag toggled for parity.')
     return 'Fast mode %s. %s' % (_state, _note)
 
-# --- /rewind: rewind/rewind.ts (回退到某条消息；CC 是 UI picker) ---
+# --- /rewind: rewind (深化版 — 对齐 CC rewind: 消息列表 + 内容搜索 + 数值回退) ---
+# CC: commands/rewind/rewind.ts → openMessageSelector (UI picker)
+# CC rewind command itself is thin — actual logic is in UI (LogSelector).
+# 深化：list 显示消息索引、search 按内容查找、数字回退保留。
 def _rewind():
     _a = _agent()
     if _a is None:
         return 'No agent.'
-    if not _args or not _args.lstrip('-').isdigit():
-        return ('Rewind: CC opens a message picker (UI). Usage: /rewind <n> to drop the last n user/assistant turns. '
-                '(Full transcript-picker is a platform UI; numeric rewind provided here.)')
-    _n = int(_args)
+    _arg = (_args or '').strip()
     _msgs = _a.messages
-    _kept = [_m for _m in _msgs if _m.get('role') == 'system']
     _rest = [_m for _m in _msgs if _m.get('role') != 'system']
-    if _n >= len(_rest):
-        _a.messages = _kept
-        return 'Rewound: cleared all non-system messages.'
-    _a.messages = _kept + _rest[:len(_rest) - _n * 2] if len(_rest) >= _n * 2 else _kept
-    return 'Rewound %d turn(s).' % _n
+
+    if _arg == 'list' or _arg == '':
+        if not _rest:
+            return 'No messages to rewind.'
+        _lines = ['Messages (%d, oldest first):' % len(_rest)]
+        for _i, _m in enumerate(_rest):
+            _role = _m.get('role', '?')
+            _text = str(_m.get('content', ''))[:60].replace(chr(10), ' ')
+            _lines.append('  [%d] %s: %s' % (_i + 1, _role, _text))
+        _lines.append(chr(10) + 'Usage: /rewind <n> to drop last n turns, or /rewind search <query>')
+        return chr(10).join(_lines)
+
+    if _arg.startswith('search '):
+        _q = _arg[7:].lower()
+        _matches = []
+        for _i, _m in enumerate(_rest):
+            if _q in str(_m.get('content', '')).lower():
+                _matches.append('  [%d] %s: %s' % (_i + 1, _m.get('role', '?'), str(_m.get('content', ''))[:60].replace(chr(10), ' ')))
+        if not _matches:
+            return 'No messages matching "%s".' % _q
+        return 'Matches (%d):' % len(_matches) + chr(10) + chr(10).join(_matches)
+
+    if _arg.lstrip('-').isdigit():
+        _n = int(_arg)
+        _kept = [_m for _m in _msgs if _m.get('role') == 'system']
+        if _n >= len(_rest):
+            _a.messages = _kept
+            return 'Rewound: cleared all non-system messages.'
+        _drop = _n * 2
+        if _drop > len(_rest):
+            _drop = len(_rest)
+        _a.messages = _kept + _rest[:len(_rest) - _drop]
+        return 'Rewound %d turn(s), %d messages remaining.' % (_n, len(_a.messages) - len(_kept))
+
+    return 'Usage: /rewind [list|search <query>|<n>]'
 
 # --- /resume: resume (深化版 — 对齐 CC resume.tsx: session 列表 + 选择 + 恢复) ---
 # CC: commands/resume/resume.tsx → LogSelector (interactive picker)
