@@ -158,7 +158,7 @@ fn save_session(path: string): string {
 import os, json, hashlib
 _p = (path or '').strip()
 if not _p:
-    _proj = os.path.join(os.path.expanduser('~'), '.claude', 'projects', hashlib.md5(os.getcwd().encode()).hexdigest()[:12])
+    _proj = os.path.join(os.path.expanduser("~"), ".claude", "projects", _hl.md5(os.getcwd().encode()).hexdigest()[:12])
     import time as _t
     _p = os.path.join(_proj, 'session-%d.jsonl' % int(_t.time()))
 try:
@@ -197,8 +197,8 @@ except Exception as _e:
 @tool("List saved sessions for this project (S-dimension). Returns transcript file paths.")
 fn list_sessions(): string {
     python! """
-import os, glob as _g
-_proj = os.path.join(os.path.expanduser('~'), '.claude', 'projects', hashlib.md5(os.getcwd().encode()).hexdigest()[:12])
+import os, glob as _g, hashlib as _hl
+_proj = os.path.join(os.path.expanduser("~"), ".claude", "projects", _hl.md5(os.getcwd().encode()).hexdigest()[:12])
 _files = sorted(_g.glob(os.path.join(_proj, 'session-*.jsonl')), reverse=True)
 if not _files:
     return 'No saved sessions in %s' % _proj
