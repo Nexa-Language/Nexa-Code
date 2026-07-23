@@ -46,6 +46,26 @@ else:
 def _agent():
     return globals().get('Coder')
 
+# P3 深化公共 helper: 持久化单个设置到 settings.local.json（对齐 CC updateSettingsForSource）
+def _persist_setting(_key, _val):
+    import json as _j
+    _target = os.path.join(os.getcwd(), '.claude', 'settings.local.json')
+    _data = {}
+    if os.path.dirname(_target):
+        os.makedirs(os.path.dirname(_target), exist_ok=True)
+    if os.path.isfile(_target):
+        try:
+            with open(_target, 'r', encoding='utf-8') as _f:
+                _data = _j.load(_f) or {}
+        except Exception:
+            _data = {}
+    if _val is None:
+        _data.pop(_key, None)
+    else:
+        _data[_key] = _val
+    with open(_target, 'w', encoding='utf-8') as _f:
+        _j.dump(_data, _f, ensure_ascii=False, indent=2)
+
 # --- /help: commands/help (HelpV2 列出命令) ---
 def _help():
     _cmds = [
@@ -392,14 +412,24 @@ def _vim():
         return 'Editor mode set to vim. Use Escape key to toggle between INSERT and NORMAL modes.'
     return 'Editor mode set to normal. Using standard (readline) keyboard bindings.'
 
-# --- /fast: fast/fast.tsx (切换 fastMode；Opus 专属) ---
+# --- /fast: fast/fast.tsx 深化（persist to userSettings + on|off + GLM 无 fast model 标注）---
+# CC fast.tsx: applyFastMode → updateSettingsForSource('userSettings', {fastMode}); /fast on|off 直接切换；
+#   fast model 切换（Opus 专属）。GLM 无 fast model → 标注无模型效果，仅持久化标志位。
 def _fast():
     _cfg = globals().setdefault('_CCPORT_GLOBAL_CONFIG', {})
-    _cur = bool(_cfg.get('fastMode', False))
-    _cfg['fastMode'] = not _cur
-    _state = 'enabled' if (not _cur) else 'disabled'
-    _note = ('Fast mode uses the same frontier model with faster output (Opus-specific). '
-             'Under the GLM runtime, fast mode has no model effect; flag toggled for parity.')
+    _arg = (_args or '').strip().lower()
+    if _arg == 'on':
+        _cfg['fastMode'] = True
+    elif _arg == 'off':
+        _cfg['fastMode'] = False
+    else:
+        _cfg['fastMode'] = not bool(_cfg.get('fastMode', False))
+    _enabled = bool(_cfg['fastMode'])
+    # CC applyFastMode: persist fastMode=true | undefined
+    _persist_setting('fastMode', True if _enabled else None)
+    _state = 'ON' if _enabled else 'OFF'
+    _note = ('Fast mode uses the same frontier model with faster output (Opus-specific, premium billing). '
+             'Under the GLM runtime, fast mode has no model effect; flag persisted for parity.')
     return 'Fast mode %s. %s' % (_state, _note)
 
 # --- /rewind: rewind (深化版 — 对齐 CC rewind: 消息列表 + 内容搜索 + 数值回退) ---
@@ -894,15 +924,39 @@ def _pr():
     )
     return '__AS_PROMPT__:' + _prompt
 
-# --- /login: API key validation + provider info ---
+# --- /login: login/getAuthStatus.ts 深化（auth status + masked key preview）---
+# CC getAuthStatus: subscription/workspaceKey 状态 + keyPreview masked（sk-a...67 (48 chars)；短 key [redacted] (N chars)）。
+# 安全契约：API key 永不 raw，仅 masked preview。Nexa 适配：读 secrets.nxs 显示 provider/base_url/key(masked)/model。
 def _login():
-    import os as _os
+    import os as _os, json as _j
     _a = _agent()
-    _lines = ['Login / API Configuration:',
-              '  Current model: %s' % (_a.model if _a else '?'),
-              '  Provider: GLM (open.bigmodel.cn coding endpoint)',
-              '  Switch: edit secrets.nxs BASE_URL + API_KEY + MODEL_NAME',
-              '  Supported: GLM / OpenAI-compatible / DeepSeek / Anthropic']
+    _sf = _os.path.join(_os.getcwd(), 'secrets.nxs')
+    _base = _key = _model = ''
+    if _os.path.isfile(_sf):
+        try:
+            with open(_sf, 'r', encoding='utf-8') as _f:
+                _sec = _j.load(_f)
+            _base = _sec.get('BASE_URL', '')
+            _key = _sec.get('API_KEY', '')
+            _mn = _sec.get('MODEL_NAME', '')
+            _model = _mn.get('default', '') if isinstance(_mn, dict) else str(_mn)
+        except Exception:
+            pass
+    def _maskkey(_k):
+        if not _k:
+            return '(not set)'
+        if len(_k) < 20:
+            return '[redacted] (%d chars)' % len(_k)
+        return '%s...%s (%d chars)' % (_k[:4], _k[-2:], len(_k))
+    _lines = ['Auth status:',
+              '  Provider: GLM (OpenAI-compatible coding endpoint)',
+              '  Base URL: %s' % (_base or '(not set)'),
+              '  API key: %s' % _maskkey(_key),
+              '  Model: %s' % (_model or (_a.model if _a else '?')),
+              '  Mode: %s' % globals().get('_CCPORT_MODE', 'default'),
+              '',
+              'Switch provider: edit secrets.nxs BASE_URL + API_KEY + MODEL_NAME',
+              'Supported: GLM / OpenAI-compatible / DeepSeek / Anthropic']
     return chr(10).join(_lines)
 
 # --- /feedback (CC commands/feedback/): record feedback ---
@@ -1105,11 +1159,17 @@ def _history():
         _lines.append('[%d] %s %s' % (_i + 1, _ftype(_m.get('role')), _content))
     return chr(10).join(_lines)
 
+# --- /theme: theme/theme.tsx 深化（persist + arg + "Theme set to X"）---
+# CC theme.tsx: ThemePicker → setTheme(setting) + persist; "Theme set to <setting>"。
+# Nexa 适配：dark/light 可移植子集（CC ThemePicker 有更多主题）。
 def _theme():
-    _t = (_args or '').strip().lower()
-    if _t in ('dark', 'light'):
-        globals()['_CCPORT_THEME'] = _t
-    return 'Theme: %s (dark/light)' % globals().get('_CCPORT_THEME', 'dark')
+    _arg = (_args or '').strip().lower()
+    if _arg in ('dark', 'light'):
+        globals()['_CCPORT_THEME'] = _arg
+        _persist_setting('theme', _arg)
+        return 'Theme set to %s' % _arg
+    _cur = globals().get('_CCPORT_THEME', 'dark')
+    return 'Current theme: %s. Usage: /theme [dark|light] (CC ThemePicker has more themes; dark/light ported.)' % _cur
 
 # --- /env: env/index.ts 深化（Runtime + 允许前缀 env vars + secret 脱敏）---
 # CC /env: ## Runtime(platform/arch/cwd/pid/node/session) + ## Environment Variables(允许前缀) +
@@ -1192,11 +1252,41 @@ def _sessionstats():
     _chars = sum(len(str(m.get('content', ''))) for m in _msgs)
     return 'Stats:\n  Messages: %d\n  Chars: %d\n  Est tokens: %d' % (len(_msgs), _chars, _chars // 4)
 
+# --- /effort: effort/effort.tsx 深化（low/medium/high/xhigh/max/auto + persist + env override + descriptions）---
+# CC effort.tsx: executeEffort(auto/unset→unset+persist, level→set+persist); CLAUDE_CODE_EFFORT_LEVEL env 覆盖；
+#   descriptions: low=Quick / medium=Balanced / high=Comprehensive / xhigh=Extended / max=Maximum / auto=default。
 def _effort():
-    _e = (_args or '').strip().lower()
-    if _e in ('low', 'medium', 'high', 'max'):
-        globals()['_CCPORT_EFFORT'] = _e
-    return 'Effort: %s (low/medium/high/max)' % globals().get('_CCPORT_EFFORT', 'high')
+    _DESC = {'low': 'Quick, straightforward implementation',
+             'medium': 'Balanced approach with standard testing',
+             'high': 'Comprehensive implementation with extensive testing',
+             'xhigh': 'Extended reasoning beyond high, short of max',
+             'max': 'Maximum capability with deepest reasoning'}
+    _arg = (_args or '').strip().lower()
+    if _arg in ('help', '-h', '--help'):
+        return ('Usage: /effort [low|medium|high|xhigh|max|auto]' + chr(10) + chr(10) + 'Effort levels:' + chr(10) +
+                chr(10).join('- %s: %s' % (_k, _v) for _k, _v in _DESC.items()) +
+                chr(10) + '- auto: Use the default effort level for your model')
+    if _arg in ('', 'current', 'status'):
+        _env = os.environ.get('CLAUDE_CODE_EFFORT_LEVEL', '').strip().lower()
+        _cur = _env or globals().get('_CCPORT_EFFORT', 'auto')
+        if _cur == 'auto':
+            return 'Effort level: auto (currently high)'
+        return 'Current effort level: %s (%s)' % (_cur, _DESC.get(_cur, ''))
+    if _arg in ('auto', 'unset'):
+        globals().pop('_CCPORT_EFFORT', None)
+        _persist_setting('effortLevel', None)
+        _env_raw = os.environ.get('CLAUDE_CODE_EFFORT_LEVEL', '')
+        if _env_raw.strip():
+            return 'Cleared effort from settings, but CLAUDE_CODE_EFFORT_LEVEL=%s still controls this session' % _env_raw
+        return 'Effort level set to auto'
+    if _arg not in _DESC:
+        return 'Invalid argument: %s. Valid options are: low, medium, high, xhigh, max, auto' % (_args or '')
+    globals()['_CCPORT_EFFORT'] = _arg
+    _persist_setting('effortLevel', _arg)
+    _env_raw = os.environ.get('CLAUDE_CODE_EFFORT_LEVEL', '')
+    if _env_raw.strip().lower() and _env_raw.strip().lower() != _arg:
+        return 'CLAUDE_CODE_EFFORT_LEVEL=%s overrides this session — clear it and %s takes over' % (_env_raw, _arg)
+    return 'Set effort level to %s: %s' % (_arg, _DESC[_arg])
 
 # --- /session: session.tsx 深化（CC 是 remote QR session；Nexa 适配本地 session 信息）---
 # CC /session: 显示 remote session URL + QR（claude --remote）；非 remote 模式提示。

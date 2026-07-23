@@ -63,6 +63,10 @@
 | /history | history.ts | role+content | **full**: formatEntryType([PROMPT]/[AI]/[TOOL>]) + 截断 200 + --last N（CC 是 pipe 子会话；Nexa 适配主会话） |
 | /session | session.tsx | 基础信息 | **full**: id/start/elapsed/messages/model/mode/cwd + CC remote QR 标注（CC 是 remote 专用，Nexa 适配本地） |
 | /usage | usage.tsx(Settings→Usage) | est tokens | **full**: unified /cost+/stats — real API tokens(_CCPORT_USAGE) + 每模型分项(_CCPORT_COST_STATE) + context chars + window%；/stats 别名→/usage |
+| /fast | fast/fast.tsx | in-memory toggle | **full**: /fast on\|off 直接切换 + persist to userSettings(fastMode) + "Fast mode ON/OFF"；GLM 无 fast model 标注（Opus 专属） |
+| /theme | theme/theme.tsx | in-memory toggle | **full**: /theme dark\|light + persist to settings + "Theme set to X"（CC ThemePicker 多主题，dark/light 可移植子集） |
+| /effort | effort/effort.tsx | low/med/high/max in-memory | **full**: low/medium/high/**xhigh**/max/**auto** + persist + CLAUDE_CODE_EFFORT_LEVEL env 覆盖 + descriptions + help/current/status（对齐 executeEffort） |
+| /login | login/getAuthStatus.ts | 静态 provider 行 | **full**: auth status — provider/base_url/API key(**masked** sk-a...67 (N chars)，短 key [redacted])/model/mode（读 secrets.nxs；key 永不 raw） |
 
 | Nexa 命令 | claude-code-ts 源 | 忠实度 | 备注 |
 |---|---|---|---|
