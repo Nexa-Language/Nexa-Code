@@ -58,6 +58,11 @@
 | /pr | commit-push-pr.ts (type=prompt, Git Safety Protocol) | git push+gh subprocess | **full**: 忠实移植为 prompt 命令（agent 执行 branch→commit→push→gh pr create/edit + Git Safety Protocol + 短 title 规则） |
 | /undo | (CC 无 /undo 命令) fileHistory.ts analogue | 单快照恢复 | **full**: + /undo list 列 tracked files + 快照数；LIFO 恢复（fileHistory checkpoint 恢复语义） |
 | /git | (CC 无 /git 命令，CC 用原生 git via Bash) | 子命令拼 CLI | **partial(自创)**: 扩充子命令(add/restore/checkout/fetch/rebase) + unknown 处理；诚实标注非 CC 源 |
+| /env | env/index.ts | Python/Platform/Model/Git | **full**: ## Runtime(platform/cwd/pid/python/session/model) + ## Environment Variables(允许前缀 CLAUDE_/FEATURE_/ANTHROPIC_/NEXA_/...) + secret 脱敏(token/password/api_key/auth→XXXX…XX (N chars)) |
+| /version | version.ts | VERSION+工具数 | **full**: `v{VERSION}` + "version this session is running" + runtime 工具数（对齐 CC version.ts） |
+| /history | history.ts | role+content | **full**: formatEntryType([PROMPT]/[AI]/[TOOL>]) + 截断 200 + --last N（CC 是 pipe 子会话；Nexa 适配主会话） |
+| /session | session.tsx | 基础信息 | **full**: id/start/elapsed/messages/model/mode/cwd + CC remote QR 标注（CC 是 remote 专用，Nexa 适配本地） |
+| /usage | usage.tsx(Settings→Usage) | est tokens | **full**: unified /cost+/stats — real API tokens(_CCPORT_USAGE) + 每模型分项(_CCPORT_COST_STATE) + context chars + window%；/stats 别名→/usage |
 
 | Nexa 命令 | claude-code-ts 源 | 忠实度 | 备注 |
 |---|---|---|---|

@@ -647,18 +647,33 @@ def _copy():
     except Exception:
         return 'Copied %d chars to clipboard.' % len(_text) if _clip_ok else 'Copy failed (no clipboard, no temp write).'
 
-# --- /usage: detailed token stats ---
+# --- /usage: usage.tsx (Settings→Usage tab) 深化（unified /cost+/stats；读真实 usage）---
+# CC /usage: 订阅者→Usage tab(plan limits)，API→Stats panel(session cost/token/activity)；/cost /stats 是别名。
+# Nexa 适配：合并 token 统计 + 每模型分项 + context window%（读 _CCPORT_USAGE/_CCPORT_COST_STATE）。
 def _usage():
     _a = _agent()
     _msgs = _a.messages if _a else []
-    _u = sum(len(str(m.get('content', ''))) for m in _msgs if m.get('role') == 'user')
-    _as = sum(len(str(m.get('content', ''))) for m in _msgs if m.get('role') == 'assistant')
-    _s = sum(len(str(m.get('content', ''))) for m in _msgs if m.get('role') == 'system')
-    _total = _u + _as + _s
-    _lines = ['Usage:',
-              '  Messages: %d (system=%d, user=%d, assistant=%d)' % (len(_msgs), 1 if _s else 0, sum(1 for m in _msgs if m.get('role')=='user'), sum(1 for m in _msgs if m.get('role')=='assistant')),
-              '  Est. tokens: %d (system=%d, user=%d, assistant=%d)' % (_total//4, _s//4, _u//4, _as//4),
-              '  Context window: ~%d%% of 200K' % min(100, (_total//4*100)//200000)]
+    _ua = globals().get('_usage_acc') or globals().get('_CCPORT_USAGE') or {}
+    _cs = globals().get('_CCPORT_COST_STATE', {})
+    _model = _a.model if _a else '?'
+    _nu = sum(1 for m in _msgs if m.get('role') == 'user')
+    _na = sum(1 for m in _msgs if m.get('role') == 'assistant')
+    _sys_c = sum(len(str(m.get('content', ''))) for m in _msgs if m.get('role') == 'system')
+    _u_c = sum(len(str(m.get('content', ''))) for m in _msgs if m.get('role') == 'user')
+    _a_c = sum(len(str(m.get('content', ''))) for m in _msgs if m.get('role') == 'assistant')
+    _tot_in = _ua.get('input', 0) if isinstance(_ua, dict) else 0
+    _tot_out = _ua.get('output', 0) if isinstance(_ua, dict) else 0
+    _lines = ['Usage (session stats):',
+              '  Messages: %d (user=%d, assistant=%d)' % (len(_msgs), _nu, _na),
+              '  Real API tokens: %d input, %d output (%d total)' % (_tot_in, _tot_out, _tot_in + _tot_out),
+              '  Context chars: %d (system=%d, user=%d, assistant=%d)' % (_sys_c + _u_c + _a_c, _sys_c, _u_c, _a_c)]
+    if _cs:
+        _lines.append('  Per-model:')
+        for _m in sorted(_cs.keys()):
+            _u = _cs[_m]
+            _lines.append('    %s: %d in / %d out (%d calls)' % (_m, _u.get('input', 0), _u.get('output', 0), _u.get('calls', 0)))
+    _ctx = (_tot_in + _tot_out) or ((_sys_c + _u_c + _a_c) // 4)
+    _lines.append('  Context window: ~%d%% of 128K (model=%s)' % (min(100, (_ctx * 100) // 128000), _model))
     return chr(10).join(_lines)
 
 # --- /export: export.tsx 深化（plain text .txt + smart filename + args 直写）---
@@ -1058,14 +1073,36 @@ def _hooks():
 
     return 'Usage: /hooks [list|add <event> <cmd>|remove <event> <cmd>|test <event>]\nEvents: %s' % ', '.join(sorted(_VALID_EVENTS))
 
+# --- /history: history.ts 深化（CC 是 pipe/attach 子会话历史；Nexa 适配主会话，用 CC formatEntryType 格式）---
+# CC history.ts: [HH:MM:SS] [TYPE] content (截断 200)；formatEntryType: PROMPT/ACK/AI/TOOL>/TOOL</DONE/ERROR；--last N。
+# Nexa 消息无 per-entry timestamp → 用序号；role→TYPE 映射对齐 CC。
 def _history():
     _a = _agent()
     _msgs = [m for m in (_a.messages if _a else []) if m.get('role') in ('user', 'assistant')]
     if not _msgs:
         return 'No history.'
-    _lines = ['History (%d):' % len(_msgs)]
-    for _i, _m in enumerate(_msgs[-20:]):
-        _lines.append('  [%d] %s: %s' % (_i+1, _m.get('role'), str(_m.get('content', ''))[:80].replace(chr(10), ' ')))
+    _limit = 20
+    _arg = (_args or '').strip()
+    _parts = _arg.split()
+    if '--last' in _parts:
+        _i = _parts.index('--last')
+        if _i + 1 < len(_parts):
+            try:
+                _limit = max(1, int(_parts[_i + 1]))
+            except ValueError:
+                pass
+    elif _arg.isdigit():
+        _limit = max(1, int(_arg))
+    _entries = _msgs[-_limit:]
+    def _ftype(_role):
+        # CC formatEntryType: assistant→[AI], user→[PROMPT]
+        return '[AI]    ' if _role == 'assistant' else '[PROMPT]'
+    _lines = ['History (%d/%d entries):' % (len(_entries), len(_msgs))]
+    for _i, _m in enumerate(_entries):
+        _content = str(_m.get('content', '')).replace(chr(10), ' ')
+        if len(_content) > 200:
+            _content = _content[:200] + '...'
+        _lines.append('[%d] %s %s' % (_i + 1, _ftype(_m.get('role')), _content))
     return chr(10).join(_lines)
 
 def _theme():
@@ -1074,23 +1111,55 @@ def _theme():
         globals()['_CCPORT_THEME'] = _t
     return 'Theme: %s (dark/light)' % globals().get('_CCPORT_THEME', 'dark')
 
+# --- /env: env/index.ts 深化（Runtime + 允许前缀 env vars + secret 脱敏）---
+# CC /env: ## Runtime(platform/arch/cwd/pid/node/session) + ## Environment Variables(允许前缀) +
+#   secret 脱敏(token/secret/password/api_key/auth/credential/jwt/session_id → XXXX…XX (N chars))。
 def _env():
-    import sys, subprocess as _sp
+    import sys, os as _os, re as _re
     _a = _agent()
-    _b = ''
-    try:
-        _b = (_sp.run(['git', 'branch', '--show-current'], capture_output=True, text=True, timeout=5).stdout or '').strip()
-    except Exception:
-        pass
-    return 'Environment:\n  Python: %s\n  Platform: %s\n  Model: %s\n  Git: %s' % (sys.version.split()[0], sys.platform, _a.model if _a else '?', _b or '(none)')
+    # CC SECRET_KEY_PATTERNS
+    _secret_re = _re.compile(r'token|secret|password|api[_-]?key|auth|private|credential|jwt|session[_-]?id', _re.I)
+    # CC ENV_PREFIX_ALLOWLIST (+ NEXA_ for this runtime)
+    _prefixes = ('CLAUDE_', 'FEATURE_', 'ANTHROPIC_', 'NEXA_', 'BUN_', 'NODE_', 'GEMINI_', 'OPENAI_', 'GROK_', 'CCR_', 'KAIROS_', 'BUGHUNTER_')
+    def _mask(_v):
+        if len(_v) <= 8:
+            return '***'
+        return '%s…%s (%d chars)' % (_v[:4], _v[-2:], len(_v))
+    _env_lines = []
+    for _k in sorted(_os.environ.keys()):
+        if not _k.startswith(_prefixes):
+            continue
+        _v = _os.environ.get(_k, '')
+        _disp = _mask(_v) if (_secret_re.search(_k) and _v) else _v
+        _env_lines.append('  %s=%s' % (_k, _disp))
+    _lines = ['## Runtime',
+              '  platform:        %s' % sys.platform,
+              '  cwd:             %s' % _os.getcwd(),
+              '  pid:             %d' % _os.getpid(),
+              '  python:          %s' % sys.version.split()[0],
+              '  session:         %s' % globals().get('_CCPORT_SESSION_ID', 'n/a'),
+              '  model:           %s' % (_a.model if _a else '?'),
+              '',
+              '## Environment Variables (allowlisted prefixes)']
+    _lines.extend(_env_lines if _env_lines else ['  (no recognized env vars set)'])
+    _lines.append('')
+    _lines.append('_Secrets matching token/password/auth/api_key are masked. Set CLAUDE_* / FEATURE_* env vars to see them here._')
+    return chr(10).join(_lines)
 
+# --- /version: version.ts 深化（VERSION + build，对齐 CC "version this session is running"）---
+# CC version.ts: `${VERSION} (built ${BUILD_TIME})` 或 VERSION；description=Print the version this session is running。
 def _version():
     import os as _os
     _v = '?'
     _vf = _os.path.join(_os.getcwd(), 'VERSION')
     if _os.path.isfile(_vf):
-        _v = open(_vf).read().strip()
-    return 'Claude Code Nexa Port v%s\n50 tools | 39+ commands | GLM-5.1' % _v
+        with open(_vf, 'r', encoding='utf-8') as _f:
+            _v = _f.read().strip()
+    _lt = globals().get('LOCAL_TOOLS', {})
+    _ntools = len(_lt) if isinstance(_lt, dict) else 0
+    return ('Claude Code (Nexa port) v%s' % _v + chr(10) +
+            'Prints the version this session is running (not what autoupdate may have downloaded).' + chr(10) +
+            'Runtime: %d tools registered, GLM coding endpoint.' % _ntools)
 
 def _recap():
     _a = _agent()
@@ -1129,21 +1198,30 @@ def _effort():
         globals()['_CCPORT_EFFORT'] = _e
     return 'Effort: %s (low/medium/high/max)' % globals().get('_CCPORT_EFFORT', 'high')
 
+# --- /session: session.tsx 深化（CC 是 remote QR session；Nexa 适配本地 session 信息）---
+# CC /session: 显示 remote session URL + QR（claude --remote）；非 remote 模式提示。
+# Nexa 适配：显示本地 session（id/start/elapsed/messages/model/mode/cwd）+ 标注 CC 是 remote 专用。
 def _session():
     import os as _os, time as _t
     _a = _agent()
     _msgs = _a.messages if _a else []
+    _t0 = globals().get('_CCPORT_SESSION_T0')
+    _elapsed = ('%ds' % int(_t.time() - _t0)) if _t0 else '?'
+    _started = _t.strftime('%Y-%m-%d %H:%M', _t.localtime(_t0)) if _t0 else '?'
     _lines = ['Session info:',
+              '  Session id: %s' % globals().get('_CCPORT_SESSION_ID', '(unset)'),
+              '  Started: %s (elapsed %s)' % (_started, _elapsed),
               '  Messages: %d' % len(_msgs),
               '  Model: %s' % (_a.model if _a else '?'),
               '  Mode: %s' % globals().get('_CCPORT_MODE', 'default'),
               '  CWD: %s' % _os.getcwd(),
-              '  Started: %s' % _t.strftime('%Y-%m-%d %H:%M')]
+              '',
+              '(CC /session shows a remote QR session for `claude --remote`; this is the local-session adaptation.)']
     return chr(10).join(_lines)
 
 _DISPATCH = {
     'help': _help, 'clear': _clear, 'compact': _compact, 'model': _model,
-    'cost': _cost, 'usage': _usage, 'stats': _sessionstats, 'status': _status,
+    'cost': _cost, 'usage': _usage, 'stats': _usage, 'status': _status,
     'context': _context, 'config': _config, 'vim': _vim, 'fast': _fast,
     'rewind': _rewind, 'resume': _resume, 'exit': _exit, 'quit': _exit,
     'init': _init, 'doctor': _doctor, 'add-dir': _add_dir, 'memory': _memory,
