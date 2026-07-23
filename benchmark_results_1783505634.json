@@ -1,9 +1,0 @@
-[
-  {
-    "id": "task_01_create_hello",
-    "name": "Create hello.py that prints Hello, world!",
-    "passed": true,
-    "message": "hello.py ran and produced expected output",
-    "elapsed": 35.4
-  }
-]

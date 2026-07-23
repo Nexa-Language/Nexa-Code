@@ -33,3 +33,11 @@ conversation-*
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code 会话/本地文件（不应入库）
+.claude/settings.local.json
+.claude/brief.md
+.claude/artifacts/
+
+# Harness-Bench 结果输出（本地跑出来的，不入库）
+benchmark_results_*.json
