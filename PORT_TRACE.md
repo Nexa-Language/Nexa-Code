@@ -67,6 +67,18 @@
 | /theme | theme/theme.tsx | in-memory toggle | **full**: /theme dark\|light + persist to settings + "Theme set to X"（CC ThemePicker 多主题，dark/light 可移植子集） |
 | /effort | effort/effort.tsx | low/med/high/max in-memory | **full**: low/medium/high/**xhigh**/max/**auto** + persist + CLAUDE_CODE_EFFORT_LEVEL env 覆盖 + descriptions + help/current/status（对齐 executeEffort） |
 | /login | login/getAuthStatus.ts | 静态 provider 行 | **full**: auth status — provider/base_url/API key(**masked** sk-a...67 (N chars)，短 key [redacted])/model/mode（读 secrets.nxs；key 永不 raw） |
+| /commit | commit.ts (type=prompt, Git Safety Protocol) | git add+commit subprocess | **full**: 忠实移植为 prompt 命令（agent 分析 diff + 跟随 repo 风格 + heredoc 单 commit + 禁 amend/空 commit/secrets） |
+| /recap | recap/generateRecap.ts | 通用 "Brief recap" prompt | **full**: exact CC RECAP_PROMPT_ZH（≤60 字，无 markdown，先 goal+task 再 next action，跳过根因/次要；forked 无工具） |
+| /summary | summary/index.ts (SessionMemory) | alias /recap（错误） | **full**: 区别于 /recap — SessionMemory 详细摘要（Goal/决策/当前状态/Next）+ 持久化 ~/.claude/session-summary.md |
+| /feedback | feedback/feedback.tsx (UI 表单) | 本地 txt | **partial**: 本地保存 + session 摘要（CC UI 表单→发 Anthropic 是平台层，无后端） |
+| /keybindings | keybindings/keybindings.ts | 静态清单 | **full**: 创建 ~/.claude/keybindings template + 显示清单（CC 写 template + $EDITOR 打开） |
+| /release-notes | release-notes/release-notes.ts | VERSION+工具数 | **full**: 读 CHANGELOG.md 按 version:· note 格式化 + fallback 版本+链接（CC fetch changelog→格式化→URL） |
+| /diff | diff/diff.tsx (DiffDialog UI) | git diff | **partial**: git diff 文本（支持 args path/ref）；CC DiffDialog 是 UI 组件 |
+| /bug | (CC 无 /bug 命令) | 本地 txt | **partial(自创)**: 本地保存 + 系统 info（Python/Platform/Git branch）；诚实标注非 CC 源 |
+| /install | install.tsx (nativeInstaller) | pip/bun pkg | **partial(自创)**: pip/bun 包安装（@scope→bun add）；CC /install 装 claude binary 本身=平台层 |
+| /screenshot | (CC computer-use NAPI) | 平台截图 | **out-of-scope**: 截图需 NAPI/原生 OS API（CC computer-use-mcp），DSL 无法表达 |
+| /terminal-setup | (CC 终端集成) | 静态 tips | **out-of-scope**: 终端集成需原生 shell/OS 配置，DSL 无法表达 |
+| /plugin | plugin/ (12+ UI 组件 + marketplace) | stub | **out-of-scope**: 插件市场+包管理是平台层（注册表+UI），引擎层无逻辑 |
 
 | Nexa 命令 | claude-code-ts 源 | 忠实度 | 备注 |
 |---|---|---|---|

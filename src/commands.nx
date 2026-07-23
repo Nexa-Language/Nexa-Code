@@ -959,31 +959,71 @@ def _login():
               'Supported: GLM / OpenAI-compatible / DeepSeek / Anthropic']
     return chr(10).join(_lines)
 
-# --- /feedback (CC commands/feedback/): record feedback ---
+# --- /feedback: feedback/feedback.tsx 深化（CC 是 Feedback UI 表单→发 Anthropic；Nexa 本地保存适配）---
+# CC /feedback: Feedback 组件 UI 表单（description + messages）→ 发送 Anthropic。Nexa 适配：本地保存（无后端）+ 附 session 摘要。partial（UI 表单平台层）。
 def _feedback():
     import os as _os, time as _t
     _fb_dir = _os.path.join(_os.path.expanduser('~'), '.claude', 'feedback')
     _os.makedirs(_fb_dir, exist_ok=True)
     _fb_file = _os.path.join(_fb_dir, 'feedback-%d.txt' % int(_t.time()))
+    _a = _agent()
+    _msgs = _a.messages if _a else []
     with open(_fb_file, 'w', encoding='utf-8') as _f:
-        _f.write(_args or '(no description)')
-    return 'Feedback recorded: %s' % _fb_file
+        _f.write('Feedback: %s\n' % (_args or '(no description)'))
+        _f.write('Session messages: %d\n' % len(_msgs))
+        _f.write('Model: %s\n' % (_a.model if _a else '?'))
+    return 'Feedback recorded: %s (saved locally; CC sends to Anthropic via UI form — platform layer).' % _fb_file
 
-# --- /keybindings (CC commands/keybindings/): show keybindings ---
+# --- /keybindings: keybindings/keybindings.ts 深化（创建配置文件 template + 显示快捷键）---
+# CC keybindings.ts: 写 template 到 keybindings 配置文件 + $EDITOR 打开。Nexa 适配：写 ~/.claude/keybindings + 显示清单。
 def _keybindings():
-    _lines = ['Keybindings:', '  Ctrl+C: Quit (double-press)', '  Shift+Tab: Cycle permission mode',
-              '  Esc: Interrupt turn', '  Ctrl+J: New line', '  Up/Down: History', '  Tab: Complete command']
+    import os as _os
+    _kb_path = _os.path.join(_os.path.expanduser('~'), '.claude', 'keybindings')
+    _existed = _os.path.isfile(_kb_path)
+    try:
+        _os.makedirs(_os.path.dirname(_kb_path), exist_ok=True)
+        if not _existed:
+            _template = (chr(10).join(['# Claude Code (Nexa port) keybindings — customize as needed',
+                '# Format: key=action', 'ctrl+c=quit', 'shift+tab=cycle_permission_mode',
+                'esc=interrupt_turn', 'ctrl+j=newline', 'up=history_prev', 'down=history_next', 'tab=complete', '']))
+            with open(_kb_path, 'w', encoding='utf-8') as _f:
+                _f.write(_template)
+        _msg = ('Opened %s in your editor.' if _existed else 'Created %s with template — open in $EDITOR to customize.') % _kb_path
+    except Exception as _e:
+        _msg = 'Could not create keybindings file: %s' % _e
+    _lines = ['Keybindings:', _msg, '', 'Available shortcuts:',
+              '  Ctrl+C: Quit (double-press)', '  Shift+Tab: Cycle permission mode',
+              '  Esc: Interrupt turn', '  Ctrl+J: New line',
+              '  Up/Down: History', '  Tab: Complete command']
     return chr(10).join(_lines)
 
-# --- /release-notes (CC commands/release-notes/): version history ---
+# --- /release-notes: release-notes/release-notes.ts 深化（version:notes 格式 + CHANGELOG.md fallback）---
+# CC release-notes.ts: fetch changelog(500ms) → "Version X:\n· note"；fallback cached → URL。Nexa 适配：读 CHANGELOG.md 格式化。
 def _release_notes():
-    import os as _os
+    import os as _os, re as _re
+    _cf = _os.path.join(_os.getcwd(), 'CHANGELOG.md')
+    if _os.path.isfile(_cf):
+        try:
+            with open(_cf, 'r', encoding='utf-8') as _f:
+                _raw = _f.read()
+            _sections = _re.split(r'^#{2,3}\s+', _raw, flags=_re.M)
+            _out = []
+            for _sec in _sections[1:6]:
+                _lines = [_ln for _ln in _sec.strip().split(chr(10)) if _ln.strip()]
+                if not _lines:
+                    continue
+                _out.append('Version %s:' % _lines[0].strip())
+                for _ln in _lines[1:]:
+                    if _ln.strip().startswith(('-', '*')):
+                        _out.append('· %s' % _ln.lstrip('-* ').strip())
+                _out.append('')
+            if _out:
+                return chr(10).join(_out)
+        except Exception:
+            pass
     _vf = _os.path.join(_os.getcwd(), 'VERSION')
-    _ver = '?'
-    if _os.path.isfile(_vf):
-        with open(_vf, 'r') as _f:
-            _ver = _f.read().strip()
-    return 'Claude Code Nexa Port v%s\n50 tools | 40 commands | GLM-5.1' % _ver
+    _v = open(_vf).read().strip() if _os.path.isfile(_vf) else '?'
+    return 'Claude Code (Nexa port) v%s\nSee CHANGELOG.md (CC upstream: https://code.claude.com/docs/en/release-notes).' % _v
 
 # --- /screenshot: capture terminal ---
 def _screenshot():
@@ -1005,27 +1045,36 @@ def _terminal_setup():
     return chr(10).join(['Terminal Setup:', '  Font: monospace with Unicode (for ⏺ ⎽ glyphs)',
               '  Color: 256-color or truecolor', '  Shift+Tab: permission modes', '  Ctrl+J: new line'])
 
-# --- /bug: report bug ---
+# --- /bug: CC 无 /bug 命令（自创）；本地保存 bug report + 系统 info ---
 def _bug():
-    import os as _os, time as _t
+    import os as _os, time as _t, sys as _sys, subprocess as _sp
     _bf = _os.path.join(_os.path.expanduser('~'), '.claude', 'bug-reports')
     _os.makedirs(_bf, exist_ok=True)
     _f = _os.path.join(_bf, 'bug-%d.txt' % int(_t.time()))
+    _branch = ''
+    try:
+        _branch = (_sp.run(['git', 'branch', '--show-current'], capture_output=True, text=True, timeout=5).stdout or '').strip()
+    except Exception:
+        pass
     with open(_f, 'w', encoding='utf-8') as _fh:
-        _fh.write('Bug: %s\n' % (_args or '(no desc)'))
-    return 'Bug report saved: %s' % _f
+        _fh.write('Bug description: %s\n' % (_args or '(no description)'))
+        _fh.write('--- System info ---\n')
+        _fh.write('Python: %s\nPlatform: %s\nGit branch: %s\n' % (_sys.version.split()[0], _sys.platform, _branch or '(none)'))
+    return 'Bug report saved: %s (CC has no /bug command; Nexa self-created convenience.)' % _f
 
-# --- /install: pip/bun package install ---
+# --- /install: install.tsx 深化（CC 是 claude binary 自安装/升级；Nexa 适配为包安装便利，自创）---
+# CC /install: nativeInstaller 安装/升级 claude binary 本身（平台层 binary 自安装）。
+# Nexa 适配：pip/bun 包安装便利（@scope→bun add，否则 pip install）。诚实标注非 CC 源。
 def _install():
     import subprocess as _sp
     _pkg = (_args or '').strip()
     if not _pkg:
-        return 'Usage: /install <package>'
-    _cmd = ['bun', 'add'] if _pkg.startswith('@') else ['pip', 'install']
-    _cmd.append(_pkg)
+        return 'Usage: /install <package>\n(CC /install upgrades the claude binary itself — platform layer; this Nexa command installs pip/bun packages, a self-created convenience.)'
+    _cmd = (['bun', 'add', _pkg] if _pkg.startswith('@') else ['pip', 'install', _pkg])
     try:
-        _r = _sp.run(_cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
-        return '%s %s: %s' % (_cmd[0], _pkg, (_r.stdout or _r.stderr)[:200])
+        _r = _sp.run(_cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=120)
+        _out = ((_r.stdout or '') + (_r.stderr or '')).strip()
+        return '%s %s: %s' % (_cmd[0], _pkg, _out[:300])
     except Exception as _e:
         return 'Install failed: %s' % _e
 
@@ -1033,12 +1082,15 @@ def _install():
 def _plugin():
     return 'Plugins: none. Use /install for packages. (Marketplace is platform feature.)'
 
-# --- Round 3: 11 more CC commands ---
+# --- /diff: diff/diff.tsx 深化（CC 是 DiffDialog UI；Nexa 适配 git diff 文本）---
+# CC /diff: DiffDialog 组件（UI 显示消息/文件 diff）。Nexa 适配：git diff 文本（支持 args 传 path/ref）。
 def _diff():
     import subprocess as _sp
+    _diff_args = (_args or '').strip().split() if _args else []
     try:
-        _r = _sp.run(['git', 'diff'] + ((_args or '').strip().split() if _args else []), capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
-        return ((_r.stdout or '').strip()[:3000]) or '(no changes)'
+        _r = _sp.run(['git', 'diff'] + _diff_args, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
+        _out = (_r.stdout or '').strip()
+        return _out[:3000] if _out else '(no changes)'
     except Exception as _e:
         return 'git diff failed: %s' % _e
 
@@ -1221,30 +1273,79 @@ def _version():
             'Prints the version this session is running (not what autoupdate may have downloaded).' + chr(10) +
             'Runtime: %d tools registered, GLM coding endpoint.' % _ntools)
 
+# --- /recap: recap/generateRecap.ts 深化（exact CC RECAP_PROMPT，语言感知，无工具）---
+# CC generateRecap: RECAP_PROMPT_ZH（≤60 字，无 markdown，先 goal+task 再 next action，跳过根因/次要）。
+# forked single-turn，无工具。本深化：用 exact CC zh prompt（用户中文）。
 def _recap():
     _a = _agent()
     _msgs = [m for m in (_a.messages if _a else []) if m.get('role') in ('user', 'assistant')]
     if len(_msgs) < 3:
-        return 'Not enough messages for recap.'
+        return 'Not enough conversation to recap yet.'
+    _recap_prompt = ('用户离开后回来了。用中文写 1-2 句话，不超过 60 字，无 markdown。'
+                     '先说明高层目标和当前任务，再说明下一步操作。跳过根因分析和次要待办。')
     try:
         _c = _a._get_client()
-        _t = chr(10).join('[%s] %s' % (m.get('role'), str(m.get('content'))[:200]) for m in _msgs)
-        return _c.chat.completions.create(model=_a.model, timeout=30, messages=[{'role':'system','content':'Brief recap of conversation.'},{'role':'user','content':_t}]).choices[0].message.content or '(empty)'
+        _transcript = chr(10).join('[%s] %s' % (m.get('role'), str(m.get('content'))[:300]) for m in _msgs)
+        _resp = _c.chat.completions.create(model=_a.model, timeout=30,
+            messages=[{'role': 'system', 'content': _recap_prompt}, {'role': 'user', 'content': _transcript}])
+        return _resp.choices[0].message.content or '(empty)'
     except Exception as _e:
         return 'Recap failed: %s' % _e
 
+# --- /summary: summary/index.ts 深化（SessionMemory 提取，区别于 /recap 的快速 blurb）---
+# CC /summary: manuallyExtractSessionMemory → 写 summary.md 并显示。区别于 /recap（≤60 字 blurb）。
+# Nexa 适配：生成详细 session summary + 持久化到 ~/.claude/session-summary.md。
 def _summary():
-    return _recap()
-
-def _commit():
-    import subprocess as _sp
-    _msg = (_args or 'update').strip()
+    _a = _agent()
+    _msgs = [m for m in (_a.messages if _a else []) if m.get('role') in ('user', 'assistant')]
+    if not _msgs:
+        return 'No messages to summarize.'
+    _sum_prompt = ('Generate a structured session summary with sections:' + chr(10) +
+                   '1. Goal: what the user is trying to accomplish' + chr(10) +
+                   '2. Key decisions and changes made' + chr(10) +
+                   '3. Current state and pending work' + chr(10) +
+                   '4. Next steps' + chr(10) + 'Be concise. Use markdown headings.')
     try:
-        _sp.run(['git', 'add', '-A'], capture_output=True, timeout=10)
-        _r = _sp.run(['git', 'commit', '-m', _msg], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
-        return 'Committed: %s' % _msg if _r.returncode == 0 else 'Commit failed: %s' % (_r.stderr or '')[:200]
+        _c = _a._get_client()
+        _transcript = chr(10).join('[%s] %s' % (m.get('role'), str(m.get('content'))[:400]) for m in _msgs)
+        _resp = _c.chat.completions.create(model=_a.model, timeout=60,
+            messages=[{'role': 'system', 'content': _sum_prompt}, {'role': 'user', 'content': _transcript}])
+        _content = _resp.choices[0].message.content or '(empty)'
+        import os as _os
+        _sf = _os.path.join(_os.path.expanduser('~'), '.claude', 'session-summary.md')
+        try:
+            with open(_sf, 'w', encoding='utf-8') as _f:
+                _f.write(_content)
+        except Exception:
+            pass
+        return 'Session summary updated.' + chr(10) + chr(10) + _content
     except Exception as _e:
-        return 'Commit failed: %s' % _e
+        return 'Failed to generate session summary: %s' % _e
+
+# --- /commit: commit.ts (type=prompt, Git Safety Protocol) 深化 ---
+# CC /commit 是 prompt 命令：getPromptContent → Context + Git Safety Protocol + 单 commit 任务（heredoc，禁 amend）。
+# 本深化：忠实移植为 prompt 命令（agent 分析 diff + 跟随 repo 风格 + heredoc commit），而非直接 subprocess。
+def _commit():
+    _extra = (chr(10) + chr(10) + 'Additional instructions from user:' + chr(10) + chr(10) + _args.strip()) if (_args or '').strip() else ''
+    _prompt = (
+        '## Context' + chr(10) +
+        '- Current git status: run `git status`' + chr(10) +
+        '- Current git diff (staged and unstaged): run `git diff HEAD`' + chr(10) +
+        '- Current branch: run `git branch --show-current`' + chr(10) +
+        '- Recent commits: run `git log --oneline -10`' + chr(10) + chr(10) +
+        '## Git Safety Protocol' + chr(10) +
+        '- NEVER update the git config' + chr(10) +
+        '- NEVER skip hooks (--no-verify, --no-gpg-sign) unless explicitly requested' + chr(10) +
+        '- CRITICAL: ALWAYS create NEW commits. NEVER use git commit --amend unless explicitly requested' + chr(10) +
+        '- Do not commit files that likely contain secrets (.env, credentials.json)' + chr(10) +
+        '- If there are no changes to commit, do not create an empty commit' + chr(10) +
+        '- Never use git commands with the -i flag (git rebase -i / git add -i)' + chr(10) + chr(10) +
+        '## Your task' + chr(10) +
+        'Based on the above changes, create a single git commit:' + chr(10) +
+        '1. Analyze all staged changes and draft a commit message — follow this repo commit style (see recent commits), summarize the nature (feature/fix/refactor/test/docs), focus on the why not the what, keep it concise (1-2 sentences).' + chr(10) +
+        '2. Stage relevant files and create the commit with a clear message (use heredoc for multi-line).' + _extra
+    )
+    return '__AS_PROMPT__:' + _prompt
 
 def _sessionstats():
     _a = _agent()
