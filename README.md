@@ -1,6 +1,6 @@
 <div align="center">
 
-# ✻ claude-code-port
+# ✻ Nexa Code
 
 ### 用 [Nexa](https://github.com/Nexa-Language/Nexa) 语言重新实现的 Claude Code
 
@@ -32,6 +32,7 @@
 ## 截图
 
 <div align="center">
+  
 **启动画面**
 
 ![c9cc5cb0-cae3-43da-b8e9-fde9965aa4ce](images/c9cc5cb0-cae3-43da-b8e9-fde9965aa4ce.png)
@@ -269,6 +270,8 @@ claude-code-port/
 ## 致谢
 
 - **Nexa 语言** — 本项目使用的 Agent-Native DSL，[仓库](https://github.com/Nexa-Language/Nexa)
+- [Qifan Wu](https://github.com/cookiesheep) — 完成了Nexa Code的试验性实现工作
+- [Yipeng Ouyang](https://github.com/ouyangyipeng) — Nexa的作者，提出了Nexa Code的设想并推进Nexa的Agent适配。
 - **Claude Code** — Anthropic 的终端 AI 编程助手，本项目的忠实移植参考源
 - **所有贡献者** — 开发、审查、测试
 
