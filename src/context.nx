@@ -141,6 +141,53 @@ return '\n\n---\n\n'.join(_blocks)
 """
 }
 
+// --- getAgentsMd: AGENTS.md workspace authority (autonomyAuthority.ts) ----------
+// CC autonomyAuthority.ts:16-18 AUTONOMY_AGENTS_FILENAME='AGENTS.md'，从 root->cwd
+//   合并 .claude/autonomy/AGENTS.md，注入为 "Workspace authority from AGENTS.md"。
+// 跨工具 AGENTS.md 约定（Codex/deepagents/Cursor/各类 harness）也读项目根 AGENTS.md。
+//   Harness-Bench 的 memory 任务把指令放根 AGENTS.md（setup_files），agent 无此加载则
+//   从未见到「存用户事实到 MEMORY.md」指令 → memory 簇全挂（bench 基线 H1 根因）。
+//   本移植发现 根 AGENTS.md + .claude/autonomy/AGENTS.md（cwd 向上，根->cwd 合并），
+//   注入为 workspace authority。partial：autonomy 触发/HEARTBEAT/调度暂缓，仅取指令加载。
+@tool("Discover AGENTS.md workspace authority (autonomyAuthority.ts) — root + .claude/autonomy, cwd-upward")
+fn get_agents_md(): string {
+    python! """
+import os
+
+found = []  # 根在前
+
+# Project AGENTS.md: cwd 向上到根（与 get_claude_md 同结构）
+_cwd = os.getcwd()
+_chain = []
+_d = _cwd
+while True:
+    _chain.append(_d)
+    _parent = os.path.dirname(_d)
+    if _parent == _d:
+        break
+    _d = _parent
+_chain.reverse()  # 根在前，cwd 在后
+
+for _dir in _chain:
+    # 根 AGENTS.md（跨工具约定，bench memory 指令所在）+ CC autonomy 路径
+    for _rel in ('AGENTS.md', os.path.join('.claude', 'autonomy', 'AGENTS.md')):
+        _p = os.path.join(_dir, _rel)
+        if os.path.isfile(_p):
+            try:
+                with open(_p, 'r', encoding='utf-8', errors='replace') as _f:
+                    _c = _f.read().strip()
+                if _c and _c not in found:
+                    found.append(_c)
+            except Exception:
+                pass
+
+if not found:
+    return ''
+# 多个 AGENTS.md 合并（根->cwd，低->高优先级）
+return '\n\n---\n\n'.join(found)
+"""
+}
+
 // --- getUserContext.currentDate: context.ts:186 + common.ts getLocalISODate -----
 @tool("Today's date (context.ts getUserContext.currentDate + common.ts getLocalISODate)")
 fn get_current_date(): string {
@@ -222,6 +269,9 @@ if _git:
 _md = get_claude_md()
 if _md:
     _sections.append(_md)
+_agents = get_agents_md()
+if _agents:
+    _sections.append('Workspace authority from AGENTS.md:\n' + _agents)
 _date = get_current_date()
 if _date:
     _sections.append(_date)
