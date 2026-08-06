@@ -41,3 +41,6 @@ Thumbs.db
 
 # Harness-Bench 结果输出（本地跑出来的，不入库）
 benchmark_results_*.json
+bench_raw_*.json
+bench_*_run.log
+diag_task*.py
