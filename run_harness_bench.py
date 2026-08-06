@@ -79,11 +79,15 @@ def run_nexa_on_task(task: Task, timeout: int = 300) -> VerifyResult:
     with tempfile.TemporaryDirectory(prefix=f"nexa_bench_{task.id}_", ignore_cleanup_errors=True) as workdir:
         workdir = Path(workdir)
 
-        # 1. 写入 setup_files
-        for rel, content in task.setup_files.items():
-            f = workdir / rel
-            f.parent.mkdir(parents=True, exist_ok=True)
-            f.write_text(content, encoding="utf-8")
+        # 1. 任务 setup：写 setup_files（newline="" LF 保真）+ 调 setup_callback
+        #    （程序化建二进制 fixture：users.db / .xlsx / .zip / .tar / .gz / cp1251 /
+        #     锁定文件 / 大日志 等）。对齐 bench 官方 runner（runner.py:643、
+        #    runner_cli.py:1304、runner_openrouter.py:404、harbor_export.py:291 均调
+        #    task.setup(ws)）。此前只手写 setup_files、漏调 setup_callback → 二进制
+        #    fixture 从未生成，agent 找不到输入文件（bench 基线对 Nexa 不公的根因，
+        #    影响 28/58 失败）。core.py Task.setup 用 newline="" 防 Windows \r\n 翻译
+        #    破坏字节级任务（md5/哈希）。
+        task.setup(workdir)
 
         # 2. 复制 secrets.nxs 到工作目录（Nexa 从 CWD 加载）
         if SECRETS.exists():
