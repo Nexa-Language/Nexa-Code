@@ -73,7 +73,10 @@ def run_nexa_on_task(task: Task, timeout: int = 300) -> VerifyResult:
     进程管理用 Popen + daemon drain 线程，避免 subprocess.run 的
     communicate() 在 stderr 管道写满时死锁、导致 timeout 失效。
     超时时杀整棵进程树，防止子进程泄漏。"""
-    with tempfile.TemporaryDirectory(prefix=f"nexa_bench_{task.id}_") as workdir:
+    # ignore_cleanup_errors=True：Windows 下子进程被 kill 后文件句柄释放有延迟，
+    # rmtree 撞上锁会抛 PermissionError；临时目录是一次性的，清不掉就留着（OS 自清），
+    # 绝不能让单个任务的目录清理拖垮整个长跑。
+    with tempfile.TemporaryDirectory(prefix=f"nexa_bench_{task.id}_", ignore_cleanup_errors=True) as workdir:
         workdir = Path(workdir)
 
         # 1. 写入 setup_files
@@ -230,7 +233,12 @@ def main():
         t0 = time.time()
         print(f"[{i+1}/{len(tasks)}] {task.id}: {task.name}...", end=" ", flush=True)
 
-        result = run_nexa_on_task(task, timeout=args.timeout)
+        # 单任务任何未捕获异常（如临时目录清理、verifier 崩溃）降级为 FAIL，
+        # 绝不让一个任务的意外中断结束整个 351 长跑。
+        try:
+            result = run_nexa_on_task(task, timeout=args.timeout)
+        except Exception as e:
+            result = VerifyResult(False, f"运行异常(未捕获): {str(e)[:100]}")
         elapsed = time.time() - t0
 
         if result.passed:
