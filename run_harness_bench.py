@@ -223,6 +223,7 @@ def main():
     passed = 0
     failed = 0
     results = []
+    out_file = THIS_DIR / f"benchmark_results_{int(time.time())}.json"
 
     for i, task in enumerate(tasks):
         elapsed = 0
@@ -247,6 +248,12 @@ def main():
             "elapsed": round(elapsed, 1),
         })
 
+        # 增量落盘：长跑（数百任务）中途被中断也不丢已跑结果
+        try:
+            out_file.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
     # ─── 汇总 ───
     total = passed + failed
     rate = (passed / total * 100) if total > 0 else 0
@@ -263,9 +270,11 @@ def main():
     print(f"  Nexa harness + GLM-5.1   = {passed}/{total} ({rate:.1f}%)")
     print(f"{'='*60}\n")
 
-    # 保存结果
-    out_file = THIS_DIR / f"benchmark_results_{int(time.time())}.json"
-    out_file.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 结果已随每任务增量写入；此处仅最终确认落盘
+    try:
+        out_file.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
     print(f"详细结果已保存: {out_file}")
 
 
