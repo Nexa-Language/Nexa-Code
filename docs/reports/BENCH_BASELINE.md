@@ -1,7 +1,8 @@
 # Nexa Harness-Bench 基线报告
 
-> 项目第一个客观质量坐标。**基准驱动开发** Phase B 交付物。
-> 生成于 2026-08-07。原始数据：`bench_raw_351.json`（351 任务逐条 pass/fail + 耗时 + 失败原因）。
+> 项目第一个客观质量坐标。**基准驱动开发** Phase B/C 交付物。
+> 公平基线更新于 2026-08-07（含 fixture + AGENTS.md 两 H1 修复后的全量重跑）。
+> 原始数据：`bench_merged_351.json`（351 任务逐条 pass/fail + 耗时 + 失败原因）。
 
 ---
 
@@ -13,11 +14,14 @@
 | Claude Code CLI | Claude Sonnet 4.6 | 341/351 (97.2%) | |
 | deepagents | GLM-5.2 | 340/351 (96.9%) | 同模型家族 |
 | **deepagents** | **GLM-5.1** | **335/351 (95.4%)** | ← **直接对比对象（同 harness 不同模型）** |
-| **Nexa harness** | **GLM-5.1** | **293/351 (83.5%)** | ← **本项目基线** |
+| **Nexa harness** | **GLM-5.1** | **321/351 (91.5%)** | ← **本项目公平基线（含两 H1 修复）** |
 
-**结论**：Nexa harness + GLM-5.1 = **293/351 (83.5%)**，落后 deepagents + 同模型 42 任务 / 11.9 个百分点。
+**结论**：Nexa harness + GLM-5.1 = **321/351 (91.5%)**，落后 deepagents + 同模型 14 任务 / 3.9 个百分点。
 
-跑法：两段式（第一段崩溃挽救 157 任务 145 PASS + 恢复段 158–351 共 194 任务 148 PASS），合并去重后无重叠，合计 351。
+> **历史**：原始基线 **293/351 (83.5%)** 对 Nexa 不公——runner 漏调 `task.setup(ws)` 导致
+> 28 个二进制 fixture（sqlite/xlsx/zip/gz/tar/cp1251…）从未生成，agent 找不到输入文件。
+> 修复 a4af21b（fixture）+ a3fa23d（AGENTS.md）后全量重跑，回收 +28 → 321/351。
+> 旧两段式跑法见 §6；本轮公平重跑分三段（1-262 / 263-338 / 339-351）合并去重无重叠。
 
 ---
 
@@ -219,4 +223,44 @@ python run_harness_bench.py --tasks 351 --timeout 300
 **更新基线**：293 + 14（确定性）= **307/351 (87.5%)**，较首基线 83.5% +4.0pp。task_223 边际另计（全量重跑可确认）。一个根因（AGENTS.md 不加载）→ +14 任务，验证「按影响面排序」策略有效。
 
 事件证据（task_223 过的那次）：工具调用 Read×3/Write×3/Bash×2，MEMORY.md 写入 "- Город: Москва"，now.py 用 timedelta(hours=3) Moscow tz。
+
+---
+
+## 8. 公平基线（全量重跑，2026-08-07）
+
+runner 已调 `task.setup(ws)`（生成二进制 fixture，修复 a4af21b）+ `context.nx` 加载 AGENTS.md（修复 a3fa23d）后，全量重跑 351 任务，三段合并：
+
+| 段 | 范围 | PASS | 说明 |
+|---|---|---|---|
+| seg1 | 1–262 | 246/262 (93.9%) | 含主 wait poll-loop 修复 85f864e |
+| seg2 | 263–338 | 64/76 (84.2%) | adv/skill 密集段 |
+| seg3 | 339–351 | 11/13 (84.6%) | adv 尾段，含 _kill_tree 修复 |
+| **合并** | **1–351** | **321/351 (91.5%)** | 无缺口、无重叠、无重复 |
+
+### 8.1 runner 健壮性修复（_kill_tree）
+
+本轮修了第三个 runner bug——超时杀进程树偶发挂死 4 小时：
+
+- **根因**：`_kill_tree` 的 `subprocess.run([taskkill], timeout=15)` 底层是 `Popen.wait(timeout=15)`，在本 Windows 环境偶发不触发 TimeoutExpired（与 task_262 主 wait 62min 同根因）。taskkill 卡在顽固进程树时 `run(timeout=15)` 永不返回 → `_kill_tree` 阻塞至 taskkill 自行退出。实测：task_339 拖到 14470s/4h、task_337 2071s、task_336 450s。
+- **修复**：`_kill_tree` 全程 fire-and-forget（优先 psutil `children(recursive)+kill`，回退 `taskkill` 用 `Popen` 不 wait、再回退 `os.kill`）；超时后 `proc.wait(timeout=10)` → 手动 poll 循环 30s 上限。数学封顶单任务超时路径 ≤ 300+30=330s。
+- **验证**：① 构造上不可超 330s（fire-and-forget + 硬 cap）；② seg3 全程无 overshoot（最慢 task_341 106.7s，exit 0）；③ seg2 的 13 个真超时任务全部在 ~300.6–301.1s 干净被杀，证明 poll-loop 超时路径生产可用。诚实注：本轮无「顽固树被 fire-and-forget 在 300s 杀掉」的运行时实例（尾段无任务触发顽固超时），靠构造证明 + seg2 干净杀佐证。
+
+### 8.2 剩余 30 失败的三分类（单点，需 3× 重跑定 variance）
+
+| 类 | 数 | 任务 | 性质 |
+|---|---|---|---|
+| **确定性 H2**（内容错/缺产物/硬超时） | ~17 | 86（numbers.txt 行序错）、202（csv 内容错）、212（config 合并超时，多步重构）、220（import 迁移不完整）、262（pytest 断言）、266（SHA256SUMS 缺）、306（merged.json 缺）、311（mod.c 返回 200 非 300）、312（policy merge 硬超时）、319（parsed.csv 缺）、328（xlsx reconcile 缺）、349（frontmatter 未闭合）、351（巨型日志 answer.json 缺）、112（xlsx openpyxl，已诊断 H2）、117（data.yaml 缺，213s 非超时）、210（tar manifest 超时）、149（sqlite 超时） | 模型逻辑/能力上限，不动 harness 凑分 |
+| **抖动超时**（简单任务本轮卡死，疑似 GLM variance） | ~10 | 35（去空行·本该秒级）、102（csv filter）、137/144（grep）、161（gzip）、211（merge intervals）、317/323/325/326（skill 任务批量超时） | 单点样本，3× 重跑大概率部分回收 |
+| **bug 残影**（elapsed 被 pre-fix bug 抬高，但仍 FAIL） | 3 | 262（3747s）、336（450s）、337（2071s） | 失败本身真实，耗时是旧 bug；现 runner 已不会再现 |
+
+**variance 诚实标注**：321/351 是**单点估计**。已知抖动源：task_223 flaky~50%（本轮 FAIL）、若干简单任务本轮偶发超时（如 35/102/137/144）。剔除 ~10 个抖动超时后，确定性通过率约 **331/351 (94.3%)**——更接近 deepagents 水平，但需 3× 重跑确认，不提前主张。
+
+### 8.3 修复前后对比（bench A→B）
+
+| 指标 | 原始（不公平） | +AGENTS.md(a3fa23d) | +fixture(a4af21b) 公平重跑 |
+|---|---|---|---|
+| 分数 | 293/351 (83.5%) | 307/351 (87.5%, 投影) | **321/351 (91.5%)** |
+| 与 deepagents 差距 | -42 任务 / -11.9pp | -28 | **-14 / -3.9pp** |
+
+两个 H1 修复（对照 CC 源码可证）合计回收 **+28 任务**，差距从 11.9pp 收窄至 3.9pp。剩余差距主要是 H2 模型上限（GLM-5.1 在多步重构/二进制处理/skill 编排上的能力边界）+ 抖动，属真实模型能力，不动 harness 凑分。
 
