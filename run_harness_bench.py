@@ -152,16 +152,23 @@ def run_nexa_on_task(task: Task, timeout: int = 300) -> VerifyResult:
             except (BrokenPipeError, OSError):
                 pass
 
-            # 主线程只 wait 进程退出——drain 线程保证管道不阻塞，timeout 真正可触发
-            try:
-                proc.wait(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                timed_out = True
-                _kill_tree(proc.pid)
-                try:
-                    proc.wait(timeout=10)
-                except Exception:
-                    pass
+            # 手动 poll 超时：不依赖 proc.wait(timeout)——task_262 实测它偶尔不触发
+            # TimeoutExpired（进程跑了 3747s/62min 才自己退出，300s 上限形同虚设，
+            # 拖垮整趟长跑）。改用 time.time() 墙钟 + proc.poll() 非阻塞轮询，到点必杀。
+            # drain 线程持续排空管道，poll 不依赖管道状态，超时真正可强制触发。
+            deadline = time.time() + timeout
+            while True:
+                if proc.poll() is not None:
+                    break  # 进程已退出
+                if time.time() >= deadline:
+                    timed_out = True
+                    _kill_tree(proc.pid)
+                    try:
+                        proc.wait(timeout=10)
+                    except Exception:
+                        pass
+                    break
+                time.sleep(0.5)
 
             # 等 drain 线程读完尾部数据
             t_out.join(timeout=5)
