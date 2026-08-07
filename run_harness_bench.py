@@ -36,28 +36,36 @@ from harness_bench.core import Task, VerifyResult
 
 def _kill_tree(pid: int) -> None:
     """杀整棵进程树（父 + 所有子进程），防止 worker / openai HTTP 长连接 / 子
-    Python 泄漏。Windows 用 taskkill /T；POSIX 优先 psutil，回退 killpg。"""
+    Python 泄漏。**全程 fire-and-forget——绝不 wait**：subprocess.run / Popen.wait
+    的 timeout 底层是 Popen.wait(timeout)，在本 Windows 环境偶发不触发 TimeoutExpired
+    （task_262 主 wait 62min、task_339 _kill_tree 阻塞 4h 的同一根因）。优先 psutil
+    跨进程组递归杀子（比 taskkill /T 干净），回退 taskkill /T / os.kill。"""
     try:
-        if os.name == "nt":
-            subprocess.run(
-                ["taskkill", "/F", "/T", "/PID", str(pid)],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                timeout=15,
-            )
-            return
-        # POSIX：优先 psutil 杀整树
+        # 优先 psutil（跨平台）：children(recursive=True) 快照非阻塞，kill() 是
+        # TerminateProcess/SIGKILL 立即返回——天然 fire-and-forget，不依赖 wait。
         try:
             import psutil
-            parent = psutil.Process(pid)
-            for child in parent.children(recursive=True):
-                try:
-                    child.kill()
-                except Exception:
-                    pass
-            parent.kill()
-            return
+            try:
+                parent = psutil.Process(pid)
+                for child in parent.children(recursive=True):
+                    try:
+                        child.kill()
+                    except Exception:
+                        pass
+                parent.kill()  # 立即返回，绝不 wait
+                return
+            except psutil.NoSuchProcess:
+                return
         except ImportError:
             pass
+        if os.name == "nt":
+            # fire-and-forget taskkill：用 Popen 不 wait，绝不依赖会偶发失效的
+            # Popen.wait(timeout)。是否真杀掉由调用方的后续 poll 确认。
+            subprocess.Popen(
+                ["taskkill", "/F", "/T", "/PID", str(pid)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            return
         import signal as _sig
         try:
             os.killpg(os.getpgid(pid), _sig.SIGKILL)
@@ -163,10 +171,13 @@ def run_nexa_on_task(task: Task, timeout: int = 300) -> VerifyResult:
                 if time.time() >= deadline:
                     timed_out = True
                     _kill_tree(proc.pid)
-                    try:
-                        proc.wait(timeout=10)
-                    except Exception:
-                        pass
+                    # 手动 poll 等进程死（不依赖 proc.wait(timeout)——同根因会不触发，
+                    # 30s 上限后无论死活都 break，runner 继续下一任务，绝不无限阻塞）。
+                    _kill_deadline = time.time() + 30
+                    while time.time() < _kill_deadline:
+                        if proc.poll() is not None:
+                            break
+                        time.sleep(0.3)
                     break
                 time.sleep(0.5)
 
