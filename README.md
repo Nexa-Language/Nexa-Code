@@ -27,6 +27,18 @@
 | 斜杠命令 | ~144 | 31（高频覆盖） |
 | Harness 六元组 H=(E,T,C,S,L,V) | 完整 | 核心语义全有 |
 
+### 基准评测（Harness-Bench）
+
+在 [Harness-Bench](https://github.com/ai-forever/harness-bench)（Sber AI 出品的机械验证 agent 基准，**无 LLM-as-judge**，391 任务）上，用**同一模型 GLM-5.1** 横向对比，Nexa harness 落后 deepagents 仅 14 任务 / 3.9 个百分点——证明 5,400 行 Nexa 还原出的 harness，已接近成熟 Python 框架的水平：
+
+| Harness | 模型 | 分数 |
+|---|---|---|
+| Claude Code CLI | Claude Opus 4.8 | 351/351 (100%) |
+| deepagents | GLM-5.1 | 335/351 (95.4%) |
+| **Nexa Code（本项目）** | **GLM-5.1** | **321/351 (91.5%)** |
+
+> 口径：task-set v0.13.0（351 任务），单次完整跑分；与 deepagents 同模型直接可比（只差 harness，不差模型）。逐任务失败分类见 [docs/reports/BENCH_BASELINE.md](docs/reports/BENCH_BASELINE.md)。
+
 ---
 
 ## 截图
