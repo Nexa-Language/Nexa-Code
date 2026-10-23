@@ -1,312 +1,141 @@
-#!/usr/bin/env python
-"""Nexa Harness-Bench Runner — 跑 Harness-Bench 351 任务评测 Nexa harness。
+"""Opt-in Harness-Bench adapter for protocol v1; no provider or agent loop."""
 
-用法（在 claude-code-port 目录下）：
-  python run_harness_bench.py --tasks 5          # 先跑前 5 个验证可行性
-  python run_harness_bench.py --tasks 351        # 跑全套（3-5 小时）
-  python run_harness_bench.py --tag easy          # 只跑 easy 标签的任务
+from __future__ import annotations
 
-前置：
-  1. nexa build src/main.nx --harness=warn（编译引擎）
-  2. secrets.nxs 配好 GLM coding 端点
-  3. Harness-Bench repo clone 到 ../harness-bench 或环境变量 HARNESS_BENCH_PATH
-"""
-import argparse, json, os, shutil, subprocess, sys, threading, time, tempfile, traceback
+import argparse
+import importlib
+import json
+import os
+import queue
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import uuid
 from pathlib import Path
+from typing import Any
 
-# ─── 路径 ───
-THIS_DIR = Path(__file__).parent.resolve()
-NEXA_SRC = str(THIS_DIR / "src" / "main.nx")
-SECRETS = THIS_DIR / "secrets.nxs"
-HARNESS_BENCH = Path(os.environ.get("HARNESS_BENCH_PATH", str(THIS_DIR.parent / "harness-bench")))
-
-if not HARNESS_BENCH.exists():
-    # 尝试 Temp 目录
-    for p in [Path("D:/Temp/wqf18/harness-bench"), Path("/tmp/harness-bench")]:
-        if p.exists():
-            HARNESS_BENCH = p
-            break
-
-sys.path.insert(0, str(HARNESS_BENCH))
-
-# ─── 导入任务 ───
-from harness_bench.tasks import ALL_TASKS, get_task
-from harness_bench.core import Task, VerifyResult
+ROOT = Path(__file__).resolve().parent
 
 
-def _kill_tree(pid: int) -> None:
-    """杀整棵进程树（父 + 所有子进程），防止 worker / openai HTTP 长连接 / 子
-    Python 泄漏。**全程 fire-and-forget——绝不 wait**：subprocess.run / Popen.wait
-    的 timeout 底层是 Popen.wait(timeout)，在本 Windows 环境偶发不触发 TimeoutExpired
-    （task_262 主 wait 62min、task_339 _kill_tree 阻塞 4h 的同一根因）。优先 psutil
-    跨进程组递归杀子（比 taskkill /T 干净），回退 taskkill /T / os.kill。"""
-    try:
-        # 优先 psutil（跨平台）：children(recursive=True) 快照非阻塞，kill() 是
-        # TerminateProcess/SIGKILL 立即返回——天然 fire-and-forget，不依赖 wait。
+def run_task(workspace: Path, prompt: str, *, timeout: int, allow_tools: bool, fixture: Path | None = None) -> dict[str, Any]:
+    args = [sys.executable, "-m", "nexa_code.host", "--cwd", str(workspace)]
+    if fixture:
+        args += ["--fixture", str(fixture.resolve())]
+    with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as diagnostics:
+        process = subprocess.Popen(
+            args, cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=diagnostics, text=True, env={**os.environ, "PYTHONPATH": str(ROOT)}
+        )
+        events: queue.Queue[dict[str, Any]] = queue.Queue()
+
+        def read() -> None:
+            assert process.stdout
+            for line in process.stdout:
+                try:
+                    value = json.loads(line)
+                    if not isinstance(value, dict) or value.get("version") != 1:
+                        raise ValueError("Invalid engine protocol version")
+                    events.put(value)
+                except ValueError as error:
+                    events.put({"type": "error", "message": str(error)})
+
+        threading.Thread(target=read, daemon=True).start()
         try:
-            import psutil
-            try:
-                parent = psutil.Process(pid)
-                for child in parent.children(recursive=True):
+            return drive(process, events, prompt, timeout, allow_tools)
+        finally:
+            if process.poll() is None:
+                send(process, "exit")
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.terminate()
                     try:
-                        child.kill()
-                    except Exception:
-                        pass
-                parent.kill()  # 立即返回，绝不 wait
-                return
-            except psutil.NoSuchProcess:
-                return
-        except ImportError:
-            pass
-        if os.name == "nt":
-            # fire-and-forget taskkill：用 Popen 不 wait，绝不依赖会偶发失效的
-            # Popen.wait(timeout)。是否真杀掉由调用方的后续 poll 确认。
-            subprocess.Popen(
-                ["taskkill", "/F", "/T", "/PID", str(pid)],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
-            return
-        import signal as _sig
+                        process.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait(timeout=3)
+            for stream in (process.stdin, process.stdout):
+                if stream:
+                    stream.close()
+
+
+def send(process: subprocess.Popen[str], kind: str, **payload: Any) -> None:
+    assert process.stdin
+    process.stdin.write(json.dumps({"version": 1, "request_id": uuid.uuid4().hex, "type": kind, **payload}) + "\n")
+    process.stdin.flush()
+
+
+def drive(process: subprocess.Popen[str], events: queue.Queue[dict[str, Any]], prompt: str, timeout: int, allow_tools: bool) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout
+    awaiting_mode = False
+    while time.monotonic() < deadline:
         try:
-            os.killpg(os.getpgid(pid), _sig.SIGKILL)
-        except Exception:
-            os.kill(pid, _sig.SIGKILL)
-    except Exception:
-        pass
+            event = events.get(timeout=0.2)
+        except queue.Empty:
+            if process.poll() is not None:
+                raise RuntimeError(f"Engine exited before a result: {process.returncode}")
+            continue
+        kind = event["type"]
+        if kind == "error":
+            raise RuntimeError(event["message"])
+        if kind == "ready":
+            if allow_tools:
+                send(process, "set_mode", mode="bypass", confirmed=True)
+                awaiting_mode = True
+            else:
+                send(process, "message", content=prompt)
+        elif kind == "request_completed" and awaiting_mode:
+            awaiting_mode = False
+            send(process, "message", content=prompt)
+        elif kind == "permission_request":
+            send(process, "cancel")
+            return {
+                "status": "waiting_approval",
+                "error": "Use --allow-tools only for a disposable benchmark workspace with explicitly authorized side effects",
+            }
+        elif kind == "done":
+            return event
+    send(process, "cancel")
+    raise TimeoutError(f"Benchmark task exceeded {timeout} seconds")
 
 
-def run_nexa_on_task(task: Task, timeout: int = 300) -> VerifyResult:
-    """在临时目录跑 Nexa harness 处理单个任务。
-
-    进程管理用 Popen + daemon drain 线程，避免 subprocess.run 的
-    communicate() 在 stderr 管道写满时死锁、导致 timeout 失效。
-    超时时杀整棵进程树，防止子进程泄漏。"""
-    # ignore_cleanup_errors=True：Windows 下子进程被 kill 后文件句柄释放有延迟，
-    # rmtree 撞上锁会抛 PermissionError；临时目录是一次性的，清不掉就留着（OS 自清），
-    # 绝不能让单个任务的目录清理拖垮整个长跑。
-    with tempfile.TemporaryDirectory(prefix=f"nexa_bench_{task.id}_", ignore_cleanup_errors=True) as workdir:
-        workdir = Path(workdir)
-
-        # 1. 任务 setup：写 setup_files（newline="" LF 保真）+ 调 setup_callback
-        #    （程序化建二进制 fixture：users.db / .xlsx / .zip / .tar / .gz / cp1251 /
-        #     锁定文件 / 大日志 等）。对齐 bench 官方 runner（runner.py:643、
-        #    runner_cli.py:1304、runner_openrouter.py:404、harbor_export.py:291 均调
-        #    task.setup(ws)）。此前只手写 setup_files、漏调 setup_callback → 二进制
-        #    fixture 从未生成，agent 找不到输入文件（bench 基线对 Nexa 不公的根因，
-        #    影响 28/58 失败）。core.py Task.setup 用 newline="" 防 Windows \r\n 翻译
-        #    破坏字节级任务（md5/哈希）。
-        task.setup(workdir)
-
-        # 2. 复制 secrets.nxs 到工作目录（Nexa 从 CWD 加载）
-        if SECRETS.exists():
-            shutil.copy(SECRETS, workdir / "secrets.nxs")
-
-        # 3. 构造 Nexa 命令：stdin pipe prompt + /exit
-        # 用 JSON events 模式（非交互），permission=auto
-        stdin_data = json.dumps({"type": "message", "content": task.prompt}) + "\n" + \
-                      json.dumps({"type": "exit"}) + "\n"
-
-        env = {
-            **os.environ,
-            "NEXA_PERMISSION_MODE": "auto",
-            "NEXA_QUIET": "1",
-            "NEXA_JSON_EVENTS": "1",
-            "NEXA_STREAM_TOOLS": "1",
-            "PYTHONUNBUFFERED": "1",
-            "PYTHONIOENCODING": "utf-8",
-        }
-
-        proc = None
-        timed_out = False
-        try:
-            # Popen + drain 线程：drain 持续排空 stdout/stderr，管道永不写满，
-            # 主线程 wait(timeout) 的 poll 才能真正被超时中断（不死锁）。
-            proc = subprocess.Popen(
-                ["nexa", "run", NEXA_SRC],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                cwd=str(workdir),
-                env=env,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-            )
-
-            stdout_chunks = []
-            stderr_chunks = []
-
-            def _drain(stream, sink):
-                try:
-                    for line in iter(stream.readline, ""):
-                        sink.append(line)
-                except Exception:
-                    pass
-                finally:
-                    try:
-                        stream.close()
-                    except Exception:
-                        pass
-
-            t_out = threading.Thread(target=_drain, args=(proc.stdout, stdout_chunks), daemon=True)
-            t_err = threading.Thread(target=_drain, args=(proc.stderr, stderr_chunks), daemon=True)
-            t_out.start()
-            t_err.start()
-
-            # 写入 stdin（prompt + exit）并关闭，agent 从 stdin 读
-            try:
-                proc.stdin.write(stdin_data)
-                proc.stdin.close()
-            except (BrokenPipeError, OSError):
-                pass
-
-            # 手动 poll 超时：不依赖 proc.wait(timeout)——task_262 实测它偶尔不触发
-            # TimeoutExpired（进程跑了 3747s/62min 才自己退出，300s 上限形同虚设，
-            # 拖垮整趟长跑）。改用 time.time() 墙钟 + proc.poll() 非阻塞轮询，到点必杀。
-            # drain 线程持续排空管道，poll 不依赖管道状态，超时真正可强制触发。
-            deadline = time.time() + timeout
-            while True:
-                if proc.poll() is not None:
-                    break  # 进程已退出
-                if time.time() >= deadline:
-                    timed_out = True
-                    _kill_tree(proc.pid)
-                    # 手动 poll 等进程死（不依赖 proc.wait(timeout)——同根因会不触发，
-                    # 30s 上限后无论死活都 break，runner 继续下一任务，绝不无限阻塞）。
-                    _kill_deadline = time.time() + 30
-                    while time.time() < _kill_deadline:
-                        if proc.poll() is not None:
-                            break
-                        time.sleep(0.3)
-                    break
-                time.sleep(0.5)
-
-            # 等 drain 线程读完尾部数据
-            t_out.join(timeout=5)
-            t_err.join(timeout=5)
-
-            stdout_text = "".join(stdout_chunks)
-            stderr_text = "".join(stderr_chunks)
-
-            if timed_out:
-                return VerifyResult(False, f"超时 ({timeout}s)")
-
-            # 解析 JSON 事件（判断 agent 是否完成）
-            events = []
-            for line in stdout_text.split("\n"):
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    events.append(json.loads(line))
-                except json.JSONDecodeError:
-                    pass
-
-            done = any(e.get("type") == "done" for e in events)
-            errors = [e for e in events if e.get("type") == "error"]
-
-            if not done and not events:
-                return VerifyResult(False, f"无输出（exit={proc.returncode}, stderr={stderr_text[:100] if stderr_text else ''})")
-            if errors and not done:
-                return VerifyResult(False, f"引擎错误: {errors[0].get('message', '')[:100]}")
-
-        except Exception as e:
-            if proc is not None:
-                try:
-                    _kill_tree(proc.pid)
-                except Exception:
-                    pass
-            return VerifyResult(False, f"运行异常: {str(e)[:100]}")
-
-        # 4. 运行 verifier 检查工作目录
-        try:
-            result = task.verifier(workdir)
-            return result
-        except Exception as e:
-            return VerifyResult(False, f"验证异常: {str(e)[:100]}")
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Nexa Harness-Bench Runner")
-    parser.add_argument("--tasks", type=int, default=5, help="跑前 N 个任务（默认 5）")
-    parser.add_argument("--tag", type=str, default=None, help="只跑指定标签的任务")
-    parser.add_argument("--timeout", type=int, default=300, help="每任务超时秒数")
-    parser.add_argument("--start", type=int, default=0, help="从第 N 个任务开始")
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--harness-path", type=Path, default=os.environ.get("HARNESS_BENCH_PATH"))
+    parser.add_argument("--tasks", type=int, default=5)
+    parser.add_argument("--start", type=int, default=0)
+    parser.add_argument("--tag")
+    parser.add_argument("--timeout", type=int, default=300)
+    parser.add_argument("--run-live", action="store_true", help="Explicitly authorize provider/network usage")
+    parser.add_argument("--allow-tools", action="store_true", help="Explicitly enable bypass in each disposable benchmark session")
+    parser.add_argument("--output", type=Path, default=Path("benchmark_results.json"))
     args = parser.parse_args()
-
-    tasks = ALL_TASKS
-    if args.tag:
-        tasks = [t for t in tasks if args.tag in t.tags]
-    tasks = tasks[args.start:args.start + args.tasks]
-
-    print(f"\n{'='*60}")
-    print(f"Nexa Harness-Bench Runner")
-    print(f"任务数: {len(tasks)} | 超时: {args.timeout}s/任务")
-    print(f"模型: GLM-5.1 (coding endpoint)")
-    print(f"{'='*60}\n")
-
-    passed = 0
-    failed = 0
-    results = []
-    out_file = THIS_DIR / f"benchmark_results_{int(time.time())}.json"
-
-    for i, task in enumerate(tasks):
-        elapsed = 0
-        t0 = time.time()
-        print(f"[{i+1}/{len(tasks)}] {task.id}: {task.name}...", end=" ", flush=True)
-
-        # 单任务任何未捕获异常（如临时目录清理、verifier 崩溃）降级为 FAIL，
-        # 绝不让一个任务的意外中断结束整个 351 长跑。
-        try:
-            result = run_nexa_on_task(task, timeout=args.timeout)
-        except Exception as e:
-            result = VerifyResult(False, f"运行异常(未捕获): {str(e)[:100]}")
-        elapsed = time.time() - t0
-
-        if result.passed:
-            passed += 1
-            print(f"✅ PASS ({elapsed:.1f}s)")
-        else:
-            failed += 1
-            print(f"❌ FAIL ({elapsed:.1f}s) — {result.message}")
-
-        results.append({
-            "id": task.id,
-            "name": task.name,
-            "passed": result.passed,
-            "message": result.message,
-            "elapsed": round(elapsed, 1),
-        })
-
-        # 增量落盘：长跑（数百任务）中途被中断也不丢已跑结果
-        try:
-            out_file.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
-        except Exception:
-            pass
-
-    # ─── 汇总 ───
-    total = passed + failed
-    rate = (passed / total * 100) if total > 0 else 0
-    print(f"\n{'='*60}")
-    print(f"结果: {passed}/{total} PASS ({rate:.1f}%)")
-    print(f"用时: {sum(r['elapsed'] for r in results):.0f}s")
-    print(f"{'='*60}")
-
-    # 对比数据
-    print(f"\n对比（Harness-Bench 官方数据）:")
-    print(f"  Claude Code + Opus 4.8  = 351/351 (100.0%)")
-    print(f"  Claude Code + Sonnet 4.6 = 341/351 (97.2%)")
-    print(f"  deepagents + GLM-5.1     = 335/351 (95.4%)")
-    print(f"  Nexa harness + GLM-5.1   = {passed}/{total} ({rate:.1f}%)")
-    print(f"{'='*60}\n")
-
-    # 结果已随每任务增量写入；此处仅最终确认落盘
-    try:
-        out_file.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
-    except Exception:
-        pass
-    print(f"详细结果已保存: {out_file}")
+    if not args.run_live or args.harness_path is None:
+        parser.error("Specify --run-live and --harness-path; credentials come from environment, never copied files")
+    sys.path.insert(0, str(args.harness_path.resolve(strict=True)))
+    tasks = importlib.import_module("harness_bench.tasks").ALL_TASKS
+    selected = [task for task in tasks if not args.tag or args.tag in task.tags][args.start : args.start + args.tasks]
+    results: list[dict[str, Any]] = []
+    for task in selected:
+        start = time.monotonic()
+        with tempfile.TemporaryDirectory(prefix="nexa-bench-") as directory:
+            workspace = Path(directory)
+            task.setup(workspace)
+            try:
+                event = run_task(workspace, task.prompt, timeout=args.timeout, allow_tools=args.allow_tools)
+                if event["status"] != "completed":
+                    raise RuntimeError(str(event.get("error") or event["status"]))
+                result = task.verifier(workspace)
+                passed, message = result.passed, result.message
+            except Exception as error:  # noqa: BLE001 - Record a failed benchmark task and continue the selected suite.
+                passed, message = False, str(error)
+            results.append({"id": task.id, "name": task.name, "passed": passed, "message": message, "elapsed": time.monotonic() - start})
+            args.output.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
+            print(f"{task.id}: {'PASS' if passed else 'FAIL'} ({results[-1]['elapsed']:.1f}s)")
+    print(f"{sum(item['passed'] for item in results)}/{len(results)} passed. Results: {args.output}")
+    return 0 if all(item["passed"] for item in results) else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -5,53 +5,25 @@
 @tool("Wait for a specified duration in seconds. Use when told to sleep/wait, or waiting for something. The user can interrupt.")
 fn Sleep(seconds: string): string {
     python! """
-import time
-_s = float(seconds) if seconds else 1.0
-if _s > 300:
-    _s = 300
-time.sleep(_s)
-return 'Slept %.1fs.' % _s
+from nexa_code.tool_services import invoke
+return invoke('Sleep', {'seconds': seconds})
 """
 }
 
 // ── EnterWorktree / ExitWorktree (EnterWorktreeTool/ + ExitWorktreeTool/) ──
-@tool("Create and enter a git worktree (isolated working directory). branch: the branch name for the worktree. Uses git worktree add. Returns the worktree path.")
+@tool("Create a git worktree (isolated working directory). branch: the branch name for the worktree. Uses git worktree add. Returns the worktree path.")
 fn EnterWorktree(branch: string, path: string): string {
     python! """
-import subprocess, os
-_b = (branch or '').strip()
-if not _b:
-    return 'branch is required.'
-_wt = (path or '').strip() or ('.worktrees/' + _b)
-try:
-    _r = subprocess.run(['git', 'worktree', 'add', _wt, '-b', _b],
-        capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
-    if _r.returncode != 0:
-        return 'git worktree add failed: %s' % (_r.stderr or _r.stdout)[:200]
-    return 'Created worktree at %s (branch %s). Run commands from this directory.' % (os.path.abspath(_wt), _b)
-except Exception as _e:
-    return 'EnterWorktree failed: %s' % _e
+from nexa_code.tool_services import invoke
+return invoke('EnterWorktree', {'branch': branch, 'path': path})
 """
 }
 
 @tool("Remove a git worktree and clean up. branch: the worktree branch to remove. Uses git worktree remove.")
 fn ExitWorktree(branch: string, path: string): string {
     python! """
-import subprocess, os
-_b = (branch or '').strip()
-_wt = (path or '').strip() or ('.worktrees/' + _b if _b else '')
-if not _wt:
-    return 'branch or path is required.'
-try:
-    _r = subprocess.run(['git', 'worktree', 'remove', _wt, '--force'],
-        capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
-    if _r.returncode != 0:
-        return 'git worktree remove failed: %s' % (_r.stderr or _r.stdout)[:200]
-    if _b:
-        subprocess.run(['git', 'branch', '-D', _b], capture_output=True, timeout=10)
-    return 'Removed worktree %s.' % _wt
-except Exception as _e:
-    return 'ExitWorktree failed: %s' % _e
+from nexa_code.tool_services import invoke
+return invoke('ExitWorktree', {'branch': branch, 'path': path})
 """
 }
 
@@ -65,7 +37,7 @@ _msg = message or ''
 if not _an:
     return 'agent_name is required.'
 _mbox.setdefault(_an, []).append({'from': 'Coder', 'content': _msg, 'ts': __import__('time').time()})
-return 'Message sent to %s.' % _an
+return 'Message saved in the local session mailbox for %s; no peer delivery is configured.' % _an
 """
 }
 
@@ -81,7 +53,7 @@ if not _cron:
     return 'cron expression is required.'
 _crons = globals().setdefault('_CCPORT_CRONS', {})
 _crons[_nm] = {'cron': _cron, 'prompt': _pmt, 'created': time.time(), 'last_run': 0}
-return 'Cron task created: %s (schedule: %s)' % (_nm, _cron)
+return 'Schedule definition saved: %s (%s). No scheduler is running; execute the prompt explicitly.' % (_nm, _cron)
 """
 }
 
@@ -149,7 +121,9 @@ return 'Current goal: %s [status: %s, blocked %d times]' % (_g.get('desc', '?'),
 @tool("Inspect the current context: message count, token estimate, model, cwd, git branch. Returns a summary string.")
 fn CtxInspect(): string {
     python! """
-import os, subprocess
+import os
+from nexa_code.processes import run
+from nexa_code.tool_services import current_session
 _a = globals().get('Coder')
 _msgs = _a.messages if _a else []
 _u = sum(1 for m in _msgs if m.get('role') == 'user')
@@ -157,9 +131,9 @@ _as = sum(1 for m in _msgs if m.get('role') == 'assistant')
 _chars = sum(len(str(m.get('content', ''))) for m in _msgs)
 _tokens = _chars // 4
 try:
-    _b = subprocess.run(['git', 'branch', '--show-current'], capture_output=True, text=True, timeout=5)
-    _branch = (_b.stdout or '').strip()
-except Exception:
+    _b = run(current_session(), ['git', 'branch', '--show-current'], timeout=5)
+    _branch = (_b['stdout'] or '').strip()
+except FileNotFoundError:
     _branch = ''
 _lines = [
     'Context:',
@@ -213,42 +187,17 @@ return 'Available skills (%d):' % len(_found) + chr(10) + chr(10).join(_found)
 @tool("Check output from a background process. task_id: the background task ID to check. Returns recent stdout lines.")
 fn Monitor(task_id: string): string {
     python! """
-_tid = (task_id or '').strip()
-if not _tid:
-    return 'task_id is required.'
-_tasks = globals().get('_CCPORT_BG_TASKS', {})
-if _tid not in _tasks:
-    return 'Background task not found: %s' % _tid
-_t = _tasks[_tid]
-return 'Task %s [status=%s]:%s%s' % (_tid, _t.get('status', '?'), chr(10), _t.get('output', '')[-500:])
+from nexa_code.tool_services import invoke
+return invoke('Monitor', {'task_id': task_id})
 """
 }
 
 // ── PowerShellTool (PowerShellTool/) — Windows PowerShell execution ──
-@tool("Execute a PowerShell command (Windows). command: the PowerShell command to run. On non-Windows, falls back to Bash.")
+@tool("Execute a PowerShell command (Windows). command: the PowerShell command to run. Requires powershell on PATH. timeout is in milliseconds.")
 fn PowerShell(command: string, timeout: string): string {
     python! """
-import sys, subprocess
-_cmd = command or ''
-if not _cmd:
-    return 'PowerShell: command is required.'
-_to = int(timeout) if timeout else 30
-if sys.platform != 'win32':
-    return 'PowerShell not available on this platform. Use Bash instead.'
-try:
-    _proc = subprocess.run(
-        ['powershell', '-NoProfile', '-Command', _cmd],
-        capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=_to)
-    _out = (_proc.stdout or '').strip()
-    if _proc.stderr:
-        _out = _out + ('[stderr]' + chr(10) + _proc.stderr.strip()) if _out else _proc.stderr.strip()
-    if not _out:
-        _out = '(no output)'
-    return _out + chr(10) + '[exit code: %d]' % _proc.returncode
-except subprocess.TimeoutExpired:
-    return 'PowerShell command timed out after %ds.' % _to
-except Exception as _e:
-    return 'PowerShell error: %s' % _e
+from nexa_code.tool_services import invoke
+return invoke('PowerShell', {'command': command, 'timeout': timeout})
 """
 }
 

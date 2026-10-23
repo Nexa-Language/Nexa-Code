@@ -1,118 +1,139 @@
-// engine.ts — subprocess 桥：spawn Nexa 引擎，JSON 行协议
-// P0 Fix 1: 正确 Python 检测 + stderr 可见 + 退出报错不静默
-// Phase 15 H3: turn_status / thinking 事件 + H5: set_mode 事件 + H6: 语义分离
-import { spawn, ChildProcessWithoutNullStreams, execSync } from "node:child_process";
-import * as path from "node:path";
-import * as readline from "node:readline";
-import { existsSync } from "node:fs";
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { createInterface, type Interface } from 'node:readline';
+import { parseEvent, type EngineEvent } from './protocol.js';
+export type { EngineEvent } from './protocol.js';
 
-export type EngineEvent =
-  | { type: "ready"; model: string }
-  | { type: "assistant_token"; content: string }
-  | { type: "tool_call"; name: string; args: unknown }
-  | { type: "tool_result"; name: string; result: string }
-  | { type: "permission_request"; request_id: number; tool: string; args: string }
-  | { type: "command_result"; name: string; result: string }
-  | { type: "model_list"; current: string; models: Array<{ name: string; available?: boolean; description?: string }> }
-  | { type: "session_list"; sessions: Array<{ path: string; title?: string; updated_at?: string; msg_count?: number }> }
-  | { type: "done"; reply: string }
-  | { type: "error"; message: string }
-  | { type: "info"; message: string }
-  | { type: "usage"; input?: number; output?: number; total?: number; cumulative_input?: number; cumulative_output?: number; estimated?: boolean }
-  | { type: "session_end" }
-  // Phase 15 H3: structured turn status (thinking phases)
-  | { type: "turn_status"; phase: string; tool?: string; elapsed?: number; tokens_in?: number; tokens_out?: number }
-  // Phase 15 H5: permission mode change
-  | { type: "mode_changed"; mode: string };
-
-function detectPython(): string {
-  if (process.env.NEXA_PYTHON) return process.env.NEXA_PYTHON;
-  try {
-    const py = execSync('python -c "import sys; print(sys.executable)"', {
-      encoding: "utf-8", timeout: 5000,
-    }).trim();
-    execSync(`"${py}" -c "import pydantic"`, { encoding: "utf-8", timeout: 5000, stdio: "pipe" });
-    return py;
-  } catch { return "python"; }
-}
-
+export type EngineOptions = {
+  projectRoot: string;
+  cwd: string;
+  permissionMode?: string;
+  session?: string;
+  model?: string;
+  provider?: string;
+  fixture?: string;
+  command?: { executable: string; args: string[] };
+  startupTimeout?: number;
+  environment?: NodeJS.ProcessEnv;
+};
 export class Engine {
   private proc: ChildProcessWithoutNullStreams;
-  private rl: readline.Interface;
-  private stderrBuf: string[] = [];
-  private startupTimer: NodeJS.Timeout | null = null;
+  private reader: Interface;
+  private timers: NodeJS.Timeout[] = [];
   private ready = false;
+  private closed = false;
+  private stopping = false;
+  private sequence = 0;
+  private diagnosticSequence = 1_000_000_000;
 
   constructor(
-    private onEvent: (e: EngineEvent) => void,
-    private onExit: () => void,
-    opts: { projectRoot: string; permissionMode?: string }
+    private onEvent: (event: EngineEvent) => void,
+    private onExit: (code: number | null, signal: NodeJS.Signals | null) => void,
+    opts: EngineOptions,
   ) {
-    const pyExe = detectPython();
-    const env: Record<string, string> = {
-      ...process.env,
-      NEXA_JSON_EVENTS: "1",
-      NEXA_PERMISSION_MODE: opts.permissionMode || "default",
-      NEXA_QUIET: "1",
-      NEXA_STREAM_TOOLS: "1",
-      PYTHONUNBUFFERED: "1",
-      PYTHONIOENCODING: "utf-8",
-    } as Record<string, string>;
-    // Method A: use wrapper script for robust env setup (conda/shell) + -u unbuffered
-    // Method B (fallback): direct python -u spawn
-    const isWin = process.platform === "win32";
-    const wrapperScript = isWin ? "nexa-cc-engine.cmd" : "nexa-cc-engine.sh";
-    const wrapperPath = path.join(opts.projectRoot, wrapperScript);
-    const useWrapper = existsSync(wrapperPath);
-    const spawnCmd = useWrapper
-      ? wrapperPath
-      : pyExe;
-    const spawnArgs = useWrapper
-      ? [opts.permissionMode || "default"]
-      : ["-u", "src/main.py"];
-    this.proc = spawn(spawnCmd, spawnArgs, {
-      cwd: opts.projectRoot, env,
-      stdio: ["pipe", "pipe", "pipe"],
-      shell: useWrapper,
+    const args = [
+      'run',
+      '--project',
+      opts.projectRoot,
+      '--no-sync',
+      'nexa-code-engine',
+      '--cwd',
+      opts.cwd,
+      '--mode',
+      opts.permissionMode ?? 'default',
+    ];
+    if (opts.provider) args.push('--provider', opts.provider);
+    if (opts.session) args.push('--session', opts.session);
+    if (opts.model) args.push('--model', opts.model);
+    if (opts.fixture) args.push('--fixture', opts.fixture);
+    this.proc = spawn(opts.command?.executable ?? process.env.NEXA_UV ?? 'uv', opts.command?.args ?? args, {
+      cwd: opts.cwd,
+      env: { ...process.env, ...opts.environment, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' },
+      stdio: ['pipe', 'pipe', 'pipe'],
+      shell: false,
     });
-    this.rl = readline.createInterface({ input: this.proc.stdout });
-    this.rl.on("line", (line) => {
+    this.reader = createInterface({ input: this.proc.stdout });
+    this.reader.on('line', (line) => {
       try {
-        const ev = JSON.parse(line) as EngineEvent;
-        if (ev.type === "ready") { this.ready = true; if (this.startupTimer) clearTimeout(this.startupTimer); }
-        this.onEvent(ev);
-      } catch { /* non-JSON ignored */ }
-    });
-    this.proc.stderr.on("data", (data: Buffer) => {
-      const text = data.toString("utf-8").trim();
-      if (text) this.stderrBuf.push(text);
-    });
-    this.proc.on("exit", (code) => {
-      if (this.startupTimer) clearTimeout(this.startupTimer);
-      if (code !== 0 && code !== null) {
-        const stderr = this.stderrBuf.join("\n").slice(-500);
-        this.onEvent({ type: "error", message: `Engine exited (code ${code}): ${stderr}` });
+        const event = parseEvent(line);
+        if (event.sequence <= this.sequence) throw new Error('Non-monotonic event sequence');
+        this.sequence = event.sequence;
+        if (event.type === 'ready') {
+          this.ready = true;
+          if (!this.stopping) this.clearTimers();
+        }
+        this.onEvent(event);
+      } catch (error) {
+        this.error('PROTOCOL_ERROR', String(error));
+        this.stop();
       }
-      this.onExit();
     });
-    // Startup timeout: nexa runtime import takes ~30s; allow 90s before giving up
-    this.startupTimer = setTimeout(() => {
+    this.proc.stderr.on('data', (chunk: Buffer) =>
+      this.error('ENGINE_DIAGNOSTIC', chunk.toString('utf8').slice(0, 4000)),
+    );
+    this.proc.stdin.on('error', (error) => {
+      if (!this.stopping) this.error('TRANSPORT_ERROR', error.message);
+    });
+    this.proc.on('error', (error) => this.error('STARTUP_ERROR', error.message));
+    this.proc.on('close', (code, signal) => {
+      this.closed = true;
+      this.clearTimers();
+      this.reader.close();
+      if (!this.ready || code !== 0)
+        this.error('ENGINE_EXIT', `Engine exited: code=${code ?? 'none'} signal=${signal ?? 'none'}`);
+      this.onExit(code, signal);
+    });
+    this.later(() => {
       if (!this.ready) {
-        this.onEvent({ type: "error", message: "Engine startup timeout (90s). The Nexa runtime takes ~30s to import. Check that Python + pydantic are installed." });
-        this.close();
+        this.error('STARTUP_TIMEOUT', 'Engine did not become ready within the startup deadline');
+        this.stop();
       }
-    }, 90000);
+    }, opts.startupTimeout ?? 30000);
   }
-
-  send(obj: unknown): void { this.proc.stdin.write(JSON.stringify(obj) + "\n"); }
-  sendMessage(content: string): void { this.send({ type: "message", content }); }
-  sendCommand(name: string): void { this.send({ type: "command", name }); }
-  sendPermissionResponse(requestId: number, approved: boolean, decision?: string): void {
-    this.send({ type: "permission_response", request_id: requestId, approved, decision: decision || (approved ? "allow_once" : "deny") });
+  private error(code: string, message: string): void {
+    this.onEvent({
+      version: 1,
+      sequence: this.diagnosticSequence++,
+      session_id: null,
+      run_id: null,
+      call_id: null,
+      type: 'error',
+      code,
+      message,
+    });
   }
-  // Phase 15 H5: send mode change to engine
-  sendSetMode(mode: string): void { this.send({ type: "set_mode", mode }); }
-  sendCancel(): void { this.send({ type: "cancel" }); }
-  sendExit(): void { this.send({ type: "exit" }); }
-  close(): void { try { this.proc.kill(); } catch { /* noop */ } }
+  private later(callback: () => void, ms: number): void {
+    const timer = setTimeout(callback, ms);
+    timer.unref();
+    this.timers.push(timer);
+  }
+  private clearTimers(): void {
+    this.timers.forEach(clearTimeout);
+    this.timers = [];
+  }
+  send(request: Record<string, unknown>): string {
+    const requestId = randomUUID();
+    if (this.closed || this.proc.stdin.destroyed) {
+      this.error('TRANSPORT_CLOSED', 'Engine is no longer connected');
+      return requestId;
+    }
+    this.proc.stdin.write(JSON.stringify({ version: 1, request_id: requestId, ...request }) + '\n');
+    return requestId;
+  }
+  cancel(): void {
+    this.send({ type: 'cancel' });
+  }
+  stop(): void {
+    if (this.stopping || this.closed) return;
+    this.stopping = true;
+    this.send({ type: 'exit' });
+    this.later(() => {
+      if (!this.closed) {
+        this.proc.kill('SIGTERM');
+        this.later(() => {
+          if (!this.closed) this.proc.kill('SIGKILL');
+        }, 1000);
+      }
+    }, 4000);
+  }
 }

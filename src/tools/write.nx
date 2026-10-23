@@ -51,24 +51,6 @@ with open(full, 'w', encoding='utf-8') as _f:
 _st[full] = {'mtime': os.path.getmtime(full), 'offset': 1, 'limit': None, 'content': content}
 
 _action = 'Updated existing file' if file_exists else 'Created new file'
-# Track 2 P0: auto-commit + diff preview after write
-_extra = ''
-_cfg = globals().get('_CCPORT_GLOBAL_CONFIG', {})
-if _cfg.get('auto_commit'):
-    try:
-        import subprocess as _sp2
-        _sp2.run(['git', 'add', full], capture_output=True, timeout=10)
-        _sp2.run(['git', 'commit', '-m', 'auto: write %s' % file_path], capture_output=True, timeout=10)
-        _extra = _extra + '\n[auto-committed]'
-    except Exception:
-        pass
-try:
-    import subprocess as _sp3
-    _diff = _sp3.run(['git', 'diff', full], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=10)
-    if _diff.stdout and _diff.stdout.strip():
-        _extra = _extra + '\n```diff\n' + _diff.stdout.strip()[:500] + '\n```'
-except Exception:
-    pass
-return '%s: %s (%d chars)%s' % (_action, file_path, len(content), _extra)
+return '%s: %s (%d chars)' % (_action, file_path, len(content))
 """
 }

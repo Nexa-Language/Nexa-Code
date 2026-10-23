@@ -22,7 +22,7 @@
 // =============================================================================
 
 @tool("Read a file from the local filesystem. Standalone apps can access any file directly. Can read text files (with line numbers, cat -n format), images (PNG, JPG, JPEG, GIF, WEBP), PDF files, and Jupyter notebooks. When reading text files supports optional offset and limit parameters. For images/PDFs max 15 pages per request. You MUST use the offset and limit parameters to read files LARGER than 2000 lines or you will not be able to recall content correctly.")
-fn Read(file_path: string, offset: number, limit: number, pages: string): string {
+fn Read(file_path: string, offset: int, limit: int, pages: string): string {
     python! """
 import os
 import base64

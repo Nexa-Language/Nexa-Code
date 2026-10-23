@@ -1,0 +1,804 @@
+INPUT '/version\r'
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ Inspect a repository, make a focused change, and verify the result. /help lists commands; /resume
+ restores a checkpoint.
+
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ ready · minimax-m2.5 · default                                                                 │
+ │ 0 tokens · 0.0s · no calls yet                                                                 │
+ │ /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-ink-pty-locgwfn1 · 40eb192ae83d  │
+ └────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ › /version
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+
+ › /version Show the Nexa Code version
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ SYSTEM
+ Nexa Code 2.4.0.dev0: runtime checkpoints, exact approvals, durable sessions, versioned JSON
+ protocol. See docs/MIGRATION.md.
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ ready · minimax-m2.5 · default                                                                 │
+ │ 0 tokens · 0.0s · no calls yet
+
+INPUT '/theme light\r'
+                    │
+ │ /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-ink-pty-locgwfn1 · 40eb192ae83d  │
+ └────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ › Ask Nexa, or / for commands
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ SYSTEM
+ Nexa Code 2.4.0.dev0: runtime checkpoints, exact approvals, durable sessions, versioned JSON
+ protocol. See docs/MIGRATION.md.
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ ready · minimax-m2.5 · default                                                                 │
+ │ 0 tokens · 0.0s · no calls yet                                                                 │
+ │ /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-ink-pty-locgwfn1 · 40eb192ae83d  │
+ └────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ › /theme light
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ SYSTEM
+ Nexa Code 2.4.0.dev0: runtime checkpoints, exact approvals, durable sessions, versioned JSON
+ protocol. See docs/MIGRATION.md.
+
+ SYSTEM
+ UI setting theme: light
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ ready · minimax-m2.5 · default                                                                 │
+ │ 0 tokens · 0.0s · no calls yet
+
+INPUT 'write and verify α\r'
+                                                                │
+ │ /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-ink-pty-locgwfn1 · 40eb192ae83d  │
+ └────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ › Ask Nexa, or / for commands
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ SYSTEM
+ Nexa Code 2.4.0.dev0: runtime checkpoints, exact approvals, durable sessions, versioned JSON
+ protocol. See docs/MIGRATION.md.
+
+ SYSTEM
+ UI setting theme: light
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ ready · minimax-m2.5 · default                                                                 │
+ │ 0 tokens · 0.0s · no calls yet                                                                 │
+ │ /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-ink-pty-locgwfn1 · 40eb192ae83d  │
+ └────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ › write and verify α
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ SYSTEM
+ Nexa Code 2.4.0.dev0: runtime checkpoints, exact approvals, durable sessions, versioned JSON
+ protocol. See docs/MIGRATION.md.
+
+ SYSTEM
+ UI setting theme: light
+
+ YOU
+ write and verify α
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ ready · minimax-m2.5 · default                                                                 ��
+ │ 0 tokens · 0.0s · no calls yet                                                                 │
+ │ /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-ink-pty-locgwfn1 · 40eb192ae83d  │
+ └────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ › Waiting for the current action…
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ SYSTEM
+ Nexa Code 2.4.0.dev0: runtime checkpoints, exact approvals, durable sessions, versioned JSON
+ protocol. See docs/MIGRATION.md.
+
+ SYSTEM
+ UI setting theme: light
+
+ YOU
+ write and verify α
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ run_started · minimax-m2.5 · default                                                           │
+ │ 0 tokens · 0.0s · no calls yet                                                                 │
+ │ /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-ink-pty-locgwfn1 · 40eb192ae83d  │
+ └────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ › Waiting for the current action…
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ SYSTEM
+ Nexa Code 2.4.0.dev0: runtime checkpoints, exact approvals, durable sessions, versioned JSON
+ protocol. See docs/MIGRATION.md.
+
+ SYSTEM
+ UI setting theme: light
+
+ YOU
+ write and verify α
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ waiting_approval · minimax-m2.5 · default                                                      │
+ │ 12 tokens · 0.0s · 1 model / 0 tool                                                            │
+ │ /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-ink-pty-locgwfn1 · 40eb192ae83d  │
+ └────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ APPROVAL · Write
+
+INPUT 'y'
+                                                                               │
+ │ Run 75a55786a3de4acd8337814ee53d8a44 · Call pty-write                                          │
+ │ Workspace: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-ink-pty-locgwfn1      │
+ │ Policy: exact call requires approval · default                                                 │
+ │ {                                                                                              │
+ │   "file_path": "verified.txt",                                                                 │
+ │   "content": "offline verified\n"                                                              │
+ │ }                                                                                              │
+ │ ---                                                                                            │
+ │ /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-ink-pty-locgwfn1/verified.txt    │
+ │ +++                                                                                            │
+ │ /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-ink-pty-locgwfn1/verified.txt    │
+ │ @@ -0,0 +1 @@                                                                                  │
+ │ +offline verified                                                                              │
+ │                                                                                                │
+ │ y allow this call · n deny · s session rule · p persistent rule                                │
+ │ Rules match this tool, workspace and every displayed argument exactly.                         │
+ └────────────────────────────────────────────────────────────────────────────────────────────────┘
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ SYSTEM
+ Nexa Code 2.4.0.dev0: runtime checkpoints, exact approvals, durable sessions, versioned JSON
+ protocol. See docs/MIGRATION.md.
+
+ SYSTEM
+ UI setting theme: light
+
+ YOU
+ write and verify α
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ waiting_approval · minimax-m2.5 · default                                                      │
+ │ 12 tokens · 0.0s · 1 model / 0 tool                                                            │
+ │ /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-ink-pty-locgwfn1 · 40eb192ae83d  │
+ └────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ › Waiting for the current action…
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ SYSTEM
+ Nexa Code 2.4.0.dev0: runtime checkpoints, exact approvals, durable sessions, versioned JSON
+ protocol. See docs/MIGRATION.md.
+
+ SYSTEM
+ UI setting theme: light
+
+ YOU
+ write and verify α
+
+ TOOL · Write · completed
+ {"file_path":"verified.txt","content":"offline verified\n"}
+ Created new file: verified.txt (17 chars)
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ approval_requested · minimax-m2.5 · default                                                    │
+ │ 12 tokens · 0.0s · 1 model / 0 tool                                                            │
+ │ /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-ink-pty-locgwfn1 · 40eb192ae83d  │
+ └────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ › Waiting for the current action…
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ SYSTEM
+ Nexa Code 2.4.0.dev0: runtime checkpoints, exact approvals, durable sessions, versioned JSON
+ protocol. See docs/MIGRATION.md.
+
+ SYSTEM
+ UI setting theme: light
+
+ YOU
+ write and verify α
+
+ TOOL · Write · completed
+ {"file_path":"verified.txt","content":"offline verified\n"}
+ Created new file: verified.txt (17 chars)
+
+ TOOL · Read · completed
+ {"file_path":"verified.txt","offset":0,"limit":0,"pages":""}
+      1→offline verified
+      2→
+
+ ┌────────────────────���───────────────────────────────────────────────────────────────────────────┐
+ │ model_started · minimax-m2.5 · default                                                         │
+ │ 12 tokens · 0.0s · 1 model / 0 tool                                                            │
+ │ /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-ink-pty-locgwfn1 · 40eb192ae83d  │
+ └──────────────────────────────────────────────────────────────────────────────────────────────��─┘
+
+ › Waiting for the current action…
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ SYSTEM
+ Nexa Code 2.4.0.dev0: runtime checkpoints, exact approvals, durable sessions, versioned JSON
+ protocol. See docs/MIGRATION.md.
+
+ SYSTEM
+ UI setting theme: light
+
+ YOU
+ write and verify α
+
+ TOOL · Write · completed
+ {"file_path":"verified.txt","content":"offline verified\n"}
+ Created new file: verified.txt (17 chars)
+
+ TOOL · Read · completed
+ {"file_path":"verified.txt","offset":0,"limit":0,"pages":""}
+      1→offline verified
+      2→
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ waiting_approval · minimax-m2.5 · default                                                      │
+ │ 36 tokens · 0.2s · 3 model / 2 tool                                                            │
+ │ /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-ink-pty-locgwfn1 · 40eb192ae83d  │
+ └─────────────────────────────────────────────────────────────────────────────────���──────────────┘
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ APPROVAL · Bash                                                                                │
+ │ Run 75a55786a3de4acd8337814ee53d8a44 · Call pty-check                                          │
+ │ Workspace: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-ink-pty-locgwfn1      │
+ │ Policy: exact call requires approval · default                                                 │
+ │ {
+
+INPUT 'y'
+                                                          │
+ │   "command": "test -s verified.txt && printf PTY-check-passed",                                │
+ │   "timeout": 5000,                                                                             │
+ │   "run_in_background": false                                                                   │
+ │ }                                                                                              │
+ │ y allow this call · n deny · s session rule · p persistent rule                                │
+ │ Rules match this tool, workspace and every displayed argument exactly.                         │
+ └──────────────────────────────────���─────────────────────────────────────────────────────────────┘
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ SYSTEM
+ Nexa Code 2.4.0.dev0: runtime checkpoints, exact approvals, durable sessions, versioned JSON
+ protocol. See docs/MIGRATION.md.
+
+ SYSTEM
+ UI setting theme: light
+
+ YOU
+ write and verify α
+
+ TOOL · Write · completed
+ {"file_path":"verified.txt","content":"offline verified\n"}
+ Created new file: verified.txt (17 chars)
+
+ TOOL · Read · completed
+ {"file_path":"verified.txt","offset":0,"limit":0,"pages":""}
+      1→offline verified
+      2→
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ waiting_approval · minimax-m2.5 · default                                                      │
+ │ 36 tokens · 0.2s · 3 model / 2 tool                                                            │
+ │ /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-ink-pty-locgwfn1 · 40eb192ae83d  │
+ └────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ › Waiting for the current action…
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ SYSTEM
+ Nexa Code 2.4.0.dev0: runtime checkpoints, exact approvals, durable sessions, versioned JSON
+ protocol. See docs/MIGRATION.md.
+
+ SYSTEM
+ UI setting theme: light
+
+ YOU
+ write and verify α
+
+ TOOL · Write · completed
+ {"file_path":"verified.txt","content":"offline verified\n"}
+ Created new file: verified.txt (17 chars)
+
+ TOOL · Read · completed
+ {"file_path":"verified.txt","offset":0,"limit":0,"pages":""}
+      1→offline verified
+      2→
+
+ TOOL · Bash · running
+ {"command":"test -s verified.txt && printf
+ PTY-check-passed","timeout":5000,"run_in_background":false}
+
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ tool_completed · minimax-m2.5 · default                                                        │
+ │ 36 tokens · 0.2s · 3 model / 2 tool                                                            │
+ │ /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-ink-pty-locgwfn1 · 40eb192ae83d  │
+ └────────────────���───────────────────────────────────────────────────────────────────────────────┘
+
+ › Waiting for the current action…
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ SYSTEM
+ Nexa Code 2.4.0.dev0: runtime checkpoints, exact approvals, durable sessions, versioned JSON
+ protocol. See docs/MIGRATION.md.
+
+ SYSTEM
+ UI setting theme: light
+
+ YOU
+ write and verify α
+
+ TOOL · Write · completed
+ {"file_path":"verified.txt","content":"offline verified\n"}
+ Created new file: verified.txt (17 chars)
+
+ TOOL · Read · completed
+ {"file_path":"verified.txt","offset":0,"limit":0,"pages":""}
+      1→offline verified
+      2→
+
+ TOOL · Bash · completed
+ {"command":"test -s verified.txt && printf
+ PTY-check-passed","timeout":5000,"run_in_background":false}
+ {"stdout": "PTY-check-passed", "stderr": "", "exit_code": 0, "status": "completed"}
+
+ NEXA
+ PTY verified
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ completed · minimax-m2.5 · default                                                             │
+ │ 48 tokens · 0.3s · 4 model / 3 tool                                                            │
+ │ /private/va
+
+INPUT 'cancel this run\r'
+r/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-ink-pty-locgwfn1 · 40eb192ae83d  │
+ └────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ › Ask Nexa, or / for commands
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ SYSTEM
+ Nexa Code 2.4.0.dev0: runtime checkpoints, exact approvals, durable sessions, versioned JSON
+ protocol. See docs/MIGRATION.md.
+
+ SYSTEM
+ UI setting theme: light
+
+ YOU
+ write and verify α
+
+ TOOL · Write · completed
+ {"file_path":"verified.txt","content":"offline verified\n"}
+ Created new file: verified.txt (17 chars)
+
+ TOOL · Read · completed
+ {"file_path":"verified.txt","offset":0,"limit":0,"pages":""}
+      1→offline verified
+      2→
+
+ TOOL · Bash · completed
+ {"command":"test -s verified.txt && printf
+ PTY-check-passed","timeout":5000,"run_in_background":false}
+ {"stdout": "PTY-check-passed", "stderr": "", "exit_code": 0, "status": "completed"}
+
+ NEXA
+ PTY verified
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ completed · minimax-m2.5 · default                                                             │
+ │ 48 tokens · 0.3s · 4 model / 3 tool                                                            │
+ │ /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-ink-pty-locgwfn1 · 40eb192ae83d  │
+ └────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ › cancel this run
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ SYSTEM
+ Nexa Code 2.4.0.dev0: runtime checkpoints, exact
+  approvals, durable sessions, versioned JSON
+ protocol. See docs/MIGRATION.md.
+
+ SYSTEM
+ UI setting theme: light
+
+ YOU
+ write and verify α
+
+ TOOL · Write · completed
+ {"file_path":"verified.txt","content":"offline
+ verified\n"}
+ Created new file: verified.txt (17 chars)
+
+ TOOL · Read · completed
+ {"file_path":"verified.txt","offset":0,"limit":0
+ ,"pages":""}
+      1→offline verified
+      2→
+
+ TOOL · Bash · completed
+ {"command":"test -s verified.txt && printf
+ PTY-check-passed","timeout":5000,"run_in_backgro
+ und":false}
+ {"stdout": "PTY-check-passed", "stderr": "",
+ "exit_code": 0, "status": "completed"}
+
+ NEXA
+ PTY verified
+
+ ┌──────────────────────────────────────────────┐
+ │ completed · minimax-m2.5 · default           │
+ │ 48 tokens · 0.3s · 4 model / 3 tool          │
+ │ /private/var/folders/7…cgwfn1 · 40eb192ae83d │
+ └────────────────────────────��─────────────────┘
+
+ › cancel this run
+ Enter send · Ctrl+J newline · Esc cancel ·
+ Ctrl+O details
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ SYSTEM
+ Nexa Code 2.4.0.dev0: runtime checkpoints, exact
+  approvals, durable sessions, versioned JSON
+ protocol. See docs/MIGRATION.md.
+
+ SYSTEM
+ UI setting theme: light
+
+ YOU
+ write and verify α
+
+ TOOL · Write · completed
+ {"file_path":"verified.txt","content":"offline
+ verified\n"}
+ Created new file: verified.txt (17 chars)
+
+ TOOL · Read · completed
+ {"file_path":"verified.txt","offset":0,"limit":0
+ ,"pages":""}
+      1→offline verified
+      2→
+
+ TOOL · Bash · completed
+ {"command":"test -s verified.txt && printf
+ PTY-check-passed","timeout":5000,"run_in_backgro
+ und":false}
+ {"stdout": "PTY-check-passed", "stderr": "",
+ "exit_code": 0, "status": "completed"}
+
+ NEXA
+ PTY verified
+
+ YOU
+ cancel this run
+
+ ┌──────────────────────────────────────────────┐
+ │ model_started · minimax-m2.5 · default       │
+ │ 48 tokens · 0.3s · 4 model / 3 tool          │
+ │ /private/var/folders/7…cgwfn1 · 40eb192ae83d │
+ [
+
+INPUT '\x1b'
+38;5;145m└──────────────────────────────────────────────┘
+
+ › Waiting for the current action…
+ Enter send · Ctrl+J newline · Esc cancel ·
+ Ctrl+O details
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ SYSTEM
+ Nexa Code 2.4.0.dev0: runtime checkpoints, exact
+  approvals, durable sessions, versioned JSON
+ protocol. See docs/MIGRATION.md.
+
+ SYSTEM
+ UI setting theme: light
+
+ YOU
+ write and verify α
+
+ TOOL · Write · completed
+ {"file_path":"verified.txt","content":"offline
+ verified\n"}
+ Created new file: verified.txt (17 chars)
+
+ TOOL · Read · completed
+
+ {"file_path":"verified.txt","offset":0,"limit":0
+ ,"pages":""}
+      1→offline verified
+      2→
+
+ TOOL · Bash · completed
+ {"command":"test -s verified.txt && printf
+ PTY-check-passed","timeout":5000,"run_in_backgro
+ und":false}
+ {"stdout": "PTY-check-passed", "stderr": "",
+ "exit_code": 0, "status": "completed"}
+
+ NEXA
+ PTY verified
+
+ YOU
+ cancel this run
+
+ ┌──────────────────────────────────────────────┐
+ │ run_stopped · minimax-m2.5 · default         │
+ │ 48 tokens · 0.3s · 4 model / 3 tool          │
+ │ /private/var/folders/7…cgwfn1 · 40eb192ae83d │
+ └──────────────────────────────────────────────┘
+
+ › Waiting for the current action…
+ Enter send · Ctrl+J newline · Esc cancel ·
+ Ctrl+O details
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ SYSTEM
+ Nexa Code 2.4.0.dev0: runtime checkpoints, exact
+  approvals, durable sessions, versioned JSON
+ protocol. See docs/MIGRATION.md.
+
+ SYSTEM
+ UI setting theme: light
+
+ YOU
+ write and verify α
+
+ TOOL · Write · completed
+ {"file_path":"verified.txt","content":"offline
+ verified\n"}
+ Created new file: verified.txt (17 chars)
+
+ TOOL · Read · completed
+
+ {"file_path":"verified.txt","offset":0,"limit":0
+ ,"pages":""}
+      1→offline verified
+      2→
+
+ TOOL · Bash · completed
+ {"command":"test -s verified.txt && printf
+ PTY-check-passed","timeout":5000,"run_in_backgro
+ und":false}
+ {"stdout": "PTY-check-passed", "stderr": "",
+ "exit_code": 0, "status": "completed"}
+
+ NEXA
+ PTY verified
+
+ YOU
+ cancel this run
+
+ ERROR
+ cancelled: Run cancelled
+
+ ┌──────────────────────────────────────────────┐
+ │ cancelled · minimax-m2.5 · default           │
+ │ 0 tokens · 4.4s · 1 model / 0 tool           │
+ │
+
+INPUT '/resume\r'
+/private/var/folders/7…cgwfn1 · 40eb192ae83d │
+ └──────────────────────────────────────────────┘
+
+ › Ask Nexa, or / for commands
+ Enter send · Ctrl+J newline · Esc cancel ·
+ Ctrl+O details
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ SYSTEM
+ Nexa Code 2.4.0.dev0: runtime checkpoints, exact
+  approvals, durable sessions, versioned JSON
+ protocol. See docs/MIGRATION.md.
+
+ SYSTEM
+ UI setting theme: light
+
+ YOU
+ write and verify α
+
+ TOOL · Write · completed
+ {"file_path":"verified.txt","content":"offline
+ verified\n"}
+ Created new file: verified.txt (17 chars)
+
+ TOOL · Read · completed
+ {"file_path":"verified.txt","offset":0,"limit":0
+ ,"pages":""}
+      1→offline verified
+      2→
+
+ TOOL · Bash · completed
+ {"command":"test -s verified.txt && printf
+ PTY-check-passed","timeout":5000,"run_in_backgro
+ und":false}
+ {"stdout": "PTY-check-passed", "stderr": "",
+ "exit_code": 0, "status": "completed"}
+
+ NEXA
+ PTY verified
+
+ YOU
+ cancel this run
+
+ ERROR
+ cancelled: Run cancelled
+
+ ┌──────────────────────────────────────────────┐
+ │ cancelled · minimax-m2.5 · default           │
+ │ 0 tokens · 4.4s · 1 model / 0 tool           │
+ │ /private/var/folders/7…cgwfn1 · 40eb192ae83d │
+ └──────────────────────────────────────────────┘
+
+ › /resume
+ Enter send · Ctrl+J newline · Esc cancel ·
+ Ctrl+O details
+
+ › /resume Choose a saved session or import JSONL
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ SYSTEM
+ Nexa Code 2.4.0.dev0: runtime checkpoints, exact
+  approvals, durable sessions, versioned JSON
+ protocol. See docs/MIGRATION.md.
+
+ SYSTEM
+ UI setting theme: light
+
+ YOU
+ write and verify α
+
+ TOOL · Write · completed
+ {"file_path":"verified.txt","content":"offline
+ verified\n"}
+ Created new file: verified.txt (17 chars)
+
+ TOOL · Read · completed
+ {"file_path":"verified.txt","offset":0,"limit":0
+ ,"pages":""}
+      1→offline verified
+      2→
+
+ TOOL · Bash · completed
+ {"command":"test -s verified.txt && printf
+ PTY-check-passed","timeout":5000,"run_in_backgro
+ und":false}
+ {"stdout": "PTY-check-passed", "stderr": "",
+ "exit_code": 0, "status": "completed"}
+
+ NEXA
+ PTY verified
+
+ YOU
+ cancel this run
+
+ ERROR
+ cancelled: Run cancelled
+
+ SYSTEM
+ 40eb192ae83d4bc3abfc100b7cb39911  write and
+ verify α
+
+ ┌──────────────────────────────────────────────┐
+ │ cancelled · minimax-m2.5 · default           │
+ │ 0 tokens · 4.4s · 1 model / 0 tool           │
+ │ /private/var/folders/7…cgwfn1 · 40eb192ae83d │
+ └──────────────────────────────────────────────┘
+
+ ┌──────────────────────────────────────────────┐
+ │Saved sessions                                │
+ │› write and verify α · minimax-m2.5           │
+ └──────────────────────────────────────────────┘
+
+ › Waiting for the current action…
+ Enter send · Ctrl+J newline · Esc ca
+
+INPUT '\x1b'
+ncel ·
+ Ctrl+O details
+ N / NEXA CODE
+ A deliberate workspace for code · runtime 2.4
+
+ SYSTEM
+ Nexa Code 2.4.0.dev0: runtime checkpoints, exact
+  approvals, durable sessions, versioned JSON
+ protocol. See docs/MIGRATION.md.
+
+ SYSTEM
+ UI setting theme: light
+
+ YOU
+ write and verify α
+
+ TOOL · Write · completed
+ {"file_path":"verified.txt","content":"offline
+ verified\n"}
+ Created new file: verified.txt (17 chars)
+
+ TOOL · Read · completed
+ {"file_path":"verified.txt","offset":0,"limit":0
+ ,"pages":""}
+      1→offline verified
+      2→
+
+ TOOL · Bash · completed
+ {"command":"test -s verified.txt && printf
+ PTY-check-passed","timeout":5000,"run_in_backgro
+ und":false}
+ {"stdout": "PTY-check-passed", "stderr": "",
+ "exit_code": 0, "status": "completed"}
+
+ NEXA
+ PTY verified
+
+ YOU
+ cancel this run
+
+ ERROR
+ cancelled: Run cancelled
+
+ SYSTEM
+ 40eb192ae83d4bc3abfc100b7cb39911  write and
+ verify α
+
+ ┌──────────────────────────────────────────────┐
+ │ cancelled · minimax-m2.5 · default           │
+ │ 0 tokens · 4.4s · 1 model / 0 tool           │
+ │ /private/var/folders/7…cgwfn1 · 40eb192ae83d │
+ └──────────────────────────────────────────────┘
+
+ › Ask Nexa, or / for commands
+ Enter send · Ctrl+J newline · Esc cancel ·
+ Ctrl+O details
+
+
+PASS: startup, commands, light theme, Unicode input, exact Write/Bash approvals, real file verification, 50-column resize, cancel, session picker, clean exit
