@@ -34,7 +34,7 @@
     "nexa_code/settings.py": "7cbc41633e857bae6566ad6a763786b081c7c07c2b62c5512186595310236cda",
     "nexa_code/storage.py": "e5f651e1703abad6f165e7eebd0a54dd88c14504da31b0c743941762b3da2dcf",
     "nexa_code/tool_services.py": "7a38c0db82ed655935f096946c9849e2bee22d5c4ff8712ea9b81717a15b0095",
-    "pyproject.toml": "43b8675b93baccff916bb62cd75e6e4be07b6cb0640af04c2ba45286f9f996a2",
+    "pyproject.toml": "ccaa8b099a4d221bca4fef2b09f40da74eab7b9adda1542ff519728dd57572e1",
     "run_harness_bench.py": "463ade7fa66cce6326f6149004c45bc525f9b9938051c885029568b1c3186f86",
     "scripts/check_wheel.py": "2905bbb70145780c4fa8e545f4b6540888149a661193bb2c238a7c5b590d1d6e",
     "scripts/pty_smoke.py": "9d6a689a10aecf5cacd02ea537106ccc63ea47f7713618a075a1ffb6e5e2c927",
