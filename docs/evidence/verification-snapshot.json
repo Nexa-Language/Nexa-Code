@@ -37,7 +37,7 @@
     "pyproject.toml": "ccaa8b099a4d221bca4fef2b09f40da74eab7b9adda1542ff519728dd57572e1",
     "run_harness_bench.py": "463ade7fa66cce6326f6149004c45bc525f9b9938051c885029568b1c3186f86",
     "scripts/check_wheel.py": "2905bbb70145780c4fa8e545f4b6540888149a661193bb2c238a7c5b590d1d6e",
-    "scripts/pty_smoke.py": "9d6a689a10aecf5cacd02ea537106ccc63ea47f7713618a075a1ffb6e5e2c927",
+    "scripts/pty_smoke.py": "7c945ce10f4ed4252f475bd618367563252a81c8b67eb53e015803c3cfdb905c",
     "setup.py": "c2bd2a725454c12f39692322cd04038b892ee9fa28ff79d9a87e84cc8465fc12",
     "src/agents.nx": "d30629e8fb3818be0105076737101af67519dcb258b893effe3687ab22c65a1e",
     "src/commands.nx": "54fd53fa2944bb53928b6d3c2a25863e49d5589606b704ebd51d6a93967842ba",
