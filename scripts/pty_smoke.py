@@ -50,6 +50,7 @@ def main() -> None:
         )
         master, slave = pty.openpty()
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 60, 100, 0, 0))
+        # Ink defers frames in CI; this child must render interactively on its real PTY.
         process = subprocess.Popen(
             ["node", str(ROOT / "ui-ink" / "dist" / "index.js"), "--cwd", directory, "--fixture", str(fixture)],
             cwd=ROOT,
@@ -57,7 +58,15 @@ def main() -> None:
             stdout=slave,
             stderr=slave,
             start_new_session=True,
-            env={**os.environ, "TERM": "xterm-256color", "FORCE_COLOR": "1", "UV_OFFLINE": "1", "UV_CACHE_DIR": "/tmp/nexa-code-uv-cache", "NEXA_QUIET": "1"},
+            env={
+                **os.environ,
+                "CI": "false",
+                "TERM": "xterm-256color",
+                "FORCE_COLOR": "1",
+                "UV_OFFLINE": "1",
+                "UV_CACHE_DIR": "/tmp/nexa-code-uv-cache",
+                "NEXA_QUIET": "1",
+            },
         )
         os.close(slave)
 
