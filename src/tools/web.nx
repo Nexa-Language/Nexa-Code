@@ -17,7 +17,7 @@
 fn WebFetch(url: string, prompt: string): string {
     python! """
 import re
-import urllib.request
+from nexa_code.http_tools import request
 
 _u = (url or '').strip()
 if not _u:
@@ -27,16 +27,8 @@ if _u.startswith('http://'):
 if not _u.startswith('https://'):
     return 'WebFetch error: url must be a valid http(s) URL.'
 
-_req = urllib.request.Request(_u, headers={'User-Agent': 'Mozilla/5.0 (compatible; nexa-ccport)'})
-try:
-    with urllib.request.urlopen(_req, timeout=20) as _r:
-        _final = _r.geturl()
-        _raw = _r.read(2 * 1024 * 1024).decode('utf-8', 'replace')
-        _code = _r.status
-except urllib.error.HTTPError as _e:
-    return 'WebFetch HTTP error %s for %s' % (_e.code, _u)
-except Exception as _e:
-    return 'WebFetch error: %s' % _e
+_response = request(_u, timeout=20)
+_final, _raw, _code = _response['url'], _response['body'], _response['status']
 
 # HTML -> text：剥离 script/style（反引用 \1）、去标签、压空白
 _txt = re.sub(r'(?is)<(script|style).*?</\1>', ' ', _raw)
@@ -60,17 +52,13 @@ return 'URL: %s (HTTP %s)%s\n\n%s' % (_u, _code, _redirect_note, _txt)
 @tool("Search the web using DuckDuckGo Instant Answer API and return results with Sources. query: the search query. Returns abstract text + related topic links. Free, no API key needed.")
 fn WebSearch(query: string): string {
     python! """
-import json, urllib.request, urllib.parse
+import json, urllib.parse
+from nexa_code.http_tools import request
 _q = (query or '').strip()
 if not _q:
     return 'WebSearch error: query is required.'
 _url = 'https://api.duckduckgo.com/?' + urllib.parse.urlencode({'q': _q, 'format': 'json', 'no_html': '1', 'no_redirect': '1', 'skip_disambig': '1'})
-try:
-    _req = urllib.request.Request(_url, headers={'User-Agent': 'Mozilla/5.0 (compatible; nexa-ccport)'})
-    with urllib.request.urlopen(_req, timeout=15) as _r:
-        _data = json.loads(_r.read().decode('utf-8', 'replace'))
-except Exception as _e:
-    return 'WebSearch error: %s' % _e
+_data = json.loads(request(_url, timeout=15)['body'])
 _lines = []
 _abstract = _data.get('AbstractText', '')
 _abstract_source = _data.get('AbstractSource', '')

@@ -1,296 +1,70 @@
-<div align="center">
+# Nexa Code
 
-# ✻ Nexa Code
+A terminal coding assistant built with Nexa definitions, the Nexa execution runtime, and Ink/React.
 
-### 用 [Nexa](https://github.com/Nexa-Language/Nexa) 语言重新实现的 Claude Code
+Nexa Code 2.4 把连续对话、审批恢复、预算、取消和工具执行交给 Nexa runtime。.nx 定义 Agent 与 **50 个公开工具**；Python host 管理工作区、会话和协议；Ink 提供独立的 Nexa 终端界面。
 
-**Agent-Harness 全 Nexa · UI 原生 Ink/React · ~5,400 行 ≈ CC 核心 27,000 行（5× 压缩）**
+[安装 / Installation](docs/INSTALL.md) · [升级迁移 / Migration](docs/MIGRATION.md) · [50 tools / 50 commands](docs/FEATURES.md) · [Architecture & protocol](docs/ARCHITECTURE.md) · [文档索引](docs/INDEX.md)
 
-</div>
+## 当前版本
 
----
+本工作树为 Nexa Code 2.4.0.dev0，依赖已发布的 [Nexa v2.4.0](https://github.com/Nexa-Language/Nexa/releases/tag/v2.4.0)，固定源码 SHA 为 [c216263](https://github.com/Nexa-Language/Nexa/commit/c2162637236e4a73feea410c4183672411666521)。安装使用该版本的显式源码来源。PyPI 的同名 nexa-lang 属于其他项目，请按安装页指定来源。
 
-## 这是什么
+## 开始使用
 
-[Claude Code](https://docs.anthropic.com/en/docs/claude-code) 是 Anthropic 的终端 AI 编程助手，官方用 TypeScript 实现，核心逻辑约 27,000 行。
+需要 Python 3.10+、uv、Node.js 20+、pnpm 10.18.3。源码布局如下：
 
-本项目用 **Nexa 语言**（一门 Agent-Native DSL，编译到 Python）重新实现了 Claude Code 的核心功能——Agent 引擎、工具链、Harness 系统、交互式 TUI——验证 **Nexa 能否让 Agent 开发者用更少的代码、更短的时间，构建出接近 Claude Code 体验的工程级项目**。
+~~~text
+work/
+├── Nexa/                    # 指定的 runtime 源码
+└── Nexa-Facility/
+    └── Nexa-Code/           # 本仓库
+~~~
 
-### 结果
+在本仓库运行：
 
-| 维度 | 官方 Claude Code | 本项目 |
-|---|---|---|
-| Agent 引擎（harness） | TypeScript ~27,000 行 | **Nexa 3,621 行** |
-| UI 前端 | Ink/React 6,680 行 | Ink/React 1,519 行 |
-| **总计** | **~34,000 行** | **~5,400 行（5× 压缩）** |
-| 内置工具 | 60 | 27（核心高频覆盖） |
-| 斜杠命令 | ~144 | 31（高频覆盖） |
-| Harness 六元组 H=(E,T,C,S,L,V) | 完整 | 核心语义全有 |
+~~~bash
+uv sync --locked --all-extras
+pnpm --dir ui-ink install --frozen-lockfile
+pnpm --dir ui-ink build
+uv run nexa-code-engine --cwd /absolute/project --doctor
+./nexa-cc.sh --cwd /absolute/project
+~~~
 
-### 基准评测（Harness-Bench）
+启动时直接编译 .nx，无需生成 src/main.py。配置由 runtime 从目标工作区及其父目录的 .nxs 与环境读取，最近目录优先。使用 --model 选择模型，--provider chat|responses|anthropic 选择协议；配置示例见[安装页](docs/INSTALL.md)。
 
-在 [Harness-Bench](https://github.com/ai-forever/harness-bench)（Sber AI 出品的机械验证 agent 基准，**无 LLM-as-judge**，391 任务）上，用**同一模型 GLM-5.1** 横向对比，Nexa harness 落后 deepagents 仅 14 任务 / 3.9 个百分点——证明 5,400 行 Nexa 还原出的 harness，已接近成熟 Python 框架的水平：
+## 日常使用
 
-| Harness | 模型 | 分数 |
-|---|---|---|
-| Claude Code CLI | Claude Opus 4.8 | 351/351 (100%) |
-| deepagents | GLM-5.1 | 335/351 (95.4%) |
-| **Nexa Code（本项目）** | **GLM-5.1** | **321/351 (91.5%)** |
+- 输入任务后按 Enter；Ctrl+J 换行，Tab 补全命令，方向键选择历史或菜单。
+- 审批显示实际参数、工作区、run/call ID、策略来源及文件差异。y 允许本次，n 拒绝，s / p 经第二次确认保存精确参数的会话 / 持久规则。
+- /resume 选择会话；/model 选择模型并新建会话；/cost 查看当前会话及研究子运行累计 usage。
+- Esc 或 Ctrl+C 取消；空闲时连续两次 Ctrl+C 退出。后台任务带期限、持续收集有界输出，并随 host 退出清理。
+- /permissions plan 进入只读模式；/permissions bypass confirm 为当前会话启用 bypass；deny 始终优先。
+- /theme light 或 /theme graphite 切换主题，Ctrl+O 展开工具输出。/help 列出全部 50 个命令名及别名。
 
-> 口径：task-set v0.13.0（351 任务），单次完整跑分；与 deepagents 同模型直接可比（只差 harness，不差模型）。逐任务失败分类见 [docs/reports/BENCH_BASELINE.md](docs/reports/BENCH_BASELINE.md)。
+原生会话保存在目标项目的 .nexa-code/sessions.sqlite3，包含关联 run、checkpoint 和审批 journal。大输出与文件快照保存在同一目录。旧 JSONL 通过 /resume /absolute/history.jsonl 导入为新会话，原文件保留。
 
----
+## 开发与验收
 
-## 截图
+~~~bash
+uv run pytest -q
+uv run ruff check .
+uv run ruff format --check .
+uv run isort --check-only nexa_code tests/runtime tests/conftest.py scripts setup.py run_harness_bench.py
+uv run ty check
+pnpm --dir ui-ink typecheck
+pnpm --dir ui-ink test
+pnpm --dir ui-ink format:check
+pnpm --dir ui-ink build
+uv build --wheel
+uv run python scripts/check_wheel.py dist/nexa_code-2.4.0.dev0-py3-none-any.whl
+uv run python scripts/pty_smoke.py
+~~~
 
-<div align="center">
-  
-**启动画面**
+默认测试禁用网络，通过 fixture provider 驱动真实 runtime、文件工具、子进程和 MCP stdio。PTY 脚本运行实际 Ink 与 Python host，[终端记录](docs/evidence/ink-pty.txt)覆盖命令、审批、文件检查、取消和退出。真实 provider、外部 Web/MCP HTTP 与操作系统通知需独立集成验收；Windows 子进程树清理仍需平台验证。
 
-![c9cc5cb0-cae3-43da-b8e9-fde9965aa4ce](images/c9cc5cb0-cae3-43da-b8e9-fde9965aa4ce.png)
-
-![image-20260628180600154](images/image-20260628180600154.png)
-
-**思考中（spinner + phase 指示）**
-
-![image-20260628180625097](images/image-20260628180625097.png)
-
-**对话 + 斜杠命令面板**
-
-![e64ed454-0469-4767-8aa3-e5901eb6c66a](images/e64ed454-0469-4767-8aa3-e5901eb6c66a.png)
-
-**工具调用展示（⏺ Tool → ⎿ Result）**
-
-![537c5fc6-8224-4e1e-a778-68c4fa2931d3](images/537c5fc6-8224-4e1e-a778-68c4fa2931d3.png)
-
-![0c36b78a-fcfd-4e01-bd48-2db87e5daadb](images/0c36b78a-fcfd-4e01-bd48-2db87e5daadb.png)
-
-</div>
-
----
-
-## 核心特性
-
-### Agent 引擎（全 Nexa）
-
-- **真 Claude Code System Prompt** — 逐字移植官方 system prompt（PREFIX + 6 静态段）
-- **真上下文组装** — git status / CLAUDE.md 层级 / 当前日期 / 环境信息（对齐 `context.ts`）
-- **Harness 六元组 H=(E,T,C,S,L,V)**
-  - **E 执行**：GLM 错误重试退避、True Cancel（ESC 中断）、危险命令检测
-  - **T 工具**：27 个忠实移植工具、自动 OpenAI schema 生成、权限规则匹配
-  - **C 上下文**：auto-compact（CC 9-section 摘要 prompt + API round 分组 + CJK-aware token 估算）
-  - **S 状态**：session 跨进程持久化（jsonl）、file history snapshot/restore
-  - **L 生命周期**：用户可配 hooks（4 事件 + glob matcher + 多源合并 + exit2 阻断）
-  - **V 验证**：verify 输出校验（类型/等值/语义）
-- **权限模型**：4 模式（default / plan / bypass / auto）+ allow/deny/ask 规则 + Shift+Tab 循环
-- **Plan Mode**：只读规划模式 + EnterPlanMode/ExitPlanMode/VerifyPlan 工具
-
-### 27 个工具
-
-| 类别 | 工具 |
-|---|---|
-| 文件操作 | Read · Edit · MultiEdit · Write · Glob · Grep · NotebookEdit |
-| Shell | Bash（危险检测 + 会话级 cwd + 后台 shell） |
-| 任务 | TodoWrite · TaskCreate · TaskUpdate · TaskList · TaskGet |
-| Agent | Agent（子 agent，隔离上下文）· AskUserQuestion |
-| Plan | EnterPlanMode · ExitPlanMode · VerifyPlan |
-| MCP | MCPTool · ListMcpResources · ReadMcpResource · McpAuth |
-| Web | WebFetch · WebSearch（DDG 真后端） |
-| 发现 | SearchExtraTools · ExecuteExtraTool |
-| 平台 | Skill · Config · PushNotification · REPL · TerminalCapture |
-
-### 31 个斜杠命令
-
-```
-/help  /clear  /compact  /model  /cost  /status  /context  /config
-/vim  /fast  /rewind  /resume  /exit  /init  /doctor  /add-dir
-/memory  /permissions  /agents  /mcp  /copy  /usage  /export
-/undo  /review  /share  /git  /pr  /login  /quit
-```
-
-### UI（Ink/React，CC 亲儿子技术栈）
-
-- CC 风格启动卡片（Welcome + Tips + What's New）
-- 底部密集状态栏（model · cwd · git branch · tokens · permission mode · elapsed）
-- 斜杠命令面板（fuzzy 匹配 + 键盘导航 + Tab 补全）
-- 工具调用展示（⏺ ToolName(args) → ⎿ result，折叠/展开 Ctrl+O）
-- 权限弹窗（工具风险标签 + 参数展示 + y/a/n/Esc）
-- Markdown 渲染（代码块 diff 高亮 + 表格对齐 + 列表 + inline code）
-- 多阶段思考状态（Thinking… → Tool: Read… → Done + elapsed 计时）
-- ESC 中断 + Shift+Tab 模式循环 + 多行输入（Ctrl+J）
-
----
-
-## 快速开始
-
-### 前置条件
-
-- Python 3.10+（推荐 Anaconda）
-- [Nexa 语言](https://github.com/Nexa-Language/Nexa)（`pip install -e .`）
-- Node.js / [Bun](https://bun.sh)（运行 Ink UI）
-- GLM API Key（[智谱开放平台](https://open.bigmodel.cn/)，需 Coding 模型配额）
-
-### 配置
-
-在项目根目录创建 `secrets.nxs`（**不要提交此文件**，已在 `.gitignore`）：
-
-```
-config default {
-    BASE_URL = "https://open.bigmodel.cn/api/coding/paas/v4"
-    API_KEY = "你的GLM-API-Key"
-    MODEL_NAME = {
-        "strong": "glm-5.1",
-        "weak": "glm-5.1",
-        "default": "glm-5.1"
-    }
-}
-```
-
-### 运行
-
-**方式 A：Ink/React UI（推荐，CC 风格 TUI）**
-
-```bash
-cd claude-code-port
-nexa build src/main.nx --harness=warn   # 编译引擎
-cd ui-ink
-bun install                              # 首次安装依赖
-bun start                                # 启动 TUI
-```
-
-**方式 B：std.ui REPL（最简，不需 Bun）**
-
-```bash
-cd claude-code-port
-nexa build src/main.nx --harness=warn
-nexa run src/main.nx
-```
-
-**方式 C：一键启动脚本**
-
-```bash
-./nexa-cc.sh    # Linux/macOS
-nexa-cc.bat     # Windows
-```
-
----
-
-## 架构
-
-```
-┌─────────────────────────────────┐     ┌──────────────────────────────────┐
-│     Ink/React UI (TypeScript)   │     │      Nexa Agent Engine (.nx)     │
-│                                 │     │                                  │
-│  · 启动卡片 / 状态栏 / 输入框    │◄───►│  · System Prompt (逐字移植 CC)   │
-│  · 斜杠命令面板 / 权限弹窗       │ JSON│  · 27 工具 (忠实移植 CC 源码)    │
-│  · Markdown 渲染 / 工具展示     │ 事件│  · Harness H=(E,T,C,S,L,V)      │
-│  · ESC 中断 / Shift+Tab 模式    │ 管道│  · 权限 4 模式 + 规则匹配        │
-│                                 │     │  · Auto-compact (9-section prompt)│
-│  纯 UI，零 Agent 逻辑            │     │  · 31 斜杠命令                   │
-│  ~1,519 行                       │     │  · 3,621 行                      │
-└─────────────────────────────────┘     └──────────────────────────────────┘
-```
-
-**边界铁律**：Agent 逻辑（工具执行 / 权限决策 / LLM 调用 / turn 循环）**100% 在 Nexa（.nx）里**。UI 层零 Agent 逻辑。
-
----
-
-## 代码对比
-
-| CC 源文件 | 行数 | Nexa 移植 | 行数 | 压缩比 |
-|---|---|---|---|---|
-| query.ts (turn 循环) | 2,057 | 映射到 NexaAgent.run() | **0**（runtime 白嫖） | ∞ |
-| toolExecution.ts | 1,831 | execute_tool + P-RUN-2 hooks | ~80 | 23× |
-| autoCompact 全系统 | 5,171 | harness.nx (9-section prompt + 分组) | ~120 | 43× |
-| 27 个工具 (CC 原版) | ~15,000 | tools/*.nx | ~1,500 | 10× |
-| context.ts + claudemd.ts | 1,665 | context.nx | ~230 | 7× |
-| permissions 全系统 | ~10,000 | permissions.nx | ~210 | 48× |
-| REPL.tsx (UI) | 6,680 | index.tsx (Ink/React) | 1,519 | 4.4× |
-
----
-
-## 项目结构
-
-```
-claude-code-port/
-├── src/                        # Nexa Agent 引擎
-│   ├── main.nx                 # 入口：REPL + JSON 事件模式 + 所有 include
-│   ├── agents.nx               # Agent 声明（Coder + 子 agent）+ 真 system prompt
-│   ├── context.nx              # 上下文组装（git/CLAUDE.md/date/env）
-│   ├── permissions.nx          # 权限模型（4 mode + allow/deny/ask + 规则匹配）
-│   ├── commands.nx             # 31 斜杠命令派发
-│   ├── harness.nx              # Harness 六元组（E/C/S/L/V + auto-compact + hooks）
-│   ├── query_mapping.nx        # turn 循环映射文档
-│   └── tools/                  # 27 个 @tool fn（忠实移植 from CC builtin-tools）
-├── ui-ink/                     # Ink/React UI（TypeScript）
-│   └── src/
-│       ├── index.tsx           # 主 UI 组件（启动卡/消息流/工具展示/权限/斜杠）
-│       ├── engine.ts           # subprocess 桥（JSON 事件协议）
-│       └── commands.ts         # 斜杠命令清单（UI 元数据）
-├── ui/app.py                   # Textual UI backup（Python）
-├── tests/
-│   ├── tools/test_tools.py     # 34 个工具正确性回归测试
-│   └── protocol/test_protocol.py # JSON 事件协议 smoke tests
-├── docs/
-│   ├── INDEX.md                # 文档索引
-│   ├── user-guide/             # 使用者文档
-│   │   ├── TOOLS.md            # 27 个工具用法
-│   │   ├── COMMANDS.md         # 31 个命令说明
-│   │   ├── PERMISSIONS.md      # 权限 4 模式
-│   │   └── EXTENSIONS.md       # Skill / MCP / Hooks
-│   ├── dev-guide/              # 开发者文档
-│   │   ├── ARCHITECTURE.md     # 混合架构 + JSON 协议 + 文件职责
-│   │   └── NEXA_GOTCHAS.md     # Nexa 踩坑记录（10 个）
-│   ├── audits/                 # Codex 审查报告
-│   └── reports/                # 测试报告 + 价值分析
-├── nexa-cc.sh / .bat           # 一键启动脚本
-├── nexa-cc-engine.cmd / .sh    # 引擎启动 wrapper（conda 激活）
-├── ROADMAP_V2.md               # 开发路线图
-├── PORT_TRACE.md               # 组件→CC源码 可追溯映射
-└── secrets.nxs                 # API 配置（gitignore，不提交）
-```
-
----
-
-## 给 Nexa 的 Runtime 补丁
-
-本项目开发过程中发现并实现了 3 个 Nexa runtime 改进（opt-in，零回归，建议合并回上游）：
-
-| 补丁 | 文件 | 效果 |
-|---|---|---|
-| **P-RUN-1** | `agent.py` 流式分支 | 带工具的 Agent 流式输出（原不支持） |
-| **P-RUN-2** | `tools_registry.py` execute_tool | 工具执行钩子（PreToolUse/PostToolUse） |
-| **P-CMP-4** | 建议（未实现） | python! 转义 lint（消除反复踩的 `\n` footgun） |
-
----
-
-## 文档
-
-### 使用者文档
-- [工具使用指南](docs/user-guide/TOOLS.md) — 27 个工具的用法和参数
-- [斜杠命令](docs/user-guide/COMMANDS.md) — 31 个命令的说明
-- [权限模式](docs/user-guide/PERMISSIONS.md) — default / plan / bypass / auto 四模式
-- [扩展系统](docs/user-guide/EXTENSIONS.md) — Skill / MCP / Hooks / 工具发现
-
-### 开发者文档
-- [架构设计](docs/dev-guide/ARCHITECTURE.md) — 混合架构 + JSON 协议 + 文件职责
-- [Nexa 踩坑记录](docs/dev-guide/NEXA_GOTCHAS.md) — python! 转义 / else-if bug / stdout 重定向等 10 个坑
-- [CC 源码对照](PORT_TRACE.md) — 每个组件对应 CC 的哪个文件:行
-
----
+历史实验报告保留在 docs/reports/，其版本、模型和测试条件属于旧实现。本轮 2.4 未进行性能对比跑分；当前行为及限制以[功能清单](docs/FEATURES.md)为准。
 
 ## 致谢
 
-- **Nexa 语言** — 本项目使用的 Agent-Native DSL，[仓库](https://github.com/Nexa-Language/Nexa)
-- [Qifan Wu](https://github.com/cookiesheep) — 完成了Nexa Code的试验性实现工作
-- [Yipeng Ouyang](https://github.com/ouyangyipeng) — Nexa的作者，提出了Nexa Code的设想并推进Nexa的Agent适配。
-- **Claude Code** — Anthropic 的终端 AI 编程助手，本项目的忠实移植参考源
-- **所有贡献者** — 开发、审查、测试
-
----
-
-<div align="center">
-
-**本项目证明：Nexa 让 Agent 开发者用 3,621 行声明式代码，构建出一个 27 工具 + 31 命令 + 完整 Harness 的 near-CC Agent——5× 代码压缩，核心算法忠实移植。**
-
-</div>
+[Qifan Wu](https://github.com/cookiesheep) 完成了早期实验；[Yipeng Ouyang](https://github.com/ouyangyipeng) 提出了项目并推进 Nexa 的 Agent 运行时。本项目使用 [Nexa](https://github.com/Nexa-Language/Nexa)、Ink 与 React；早期交互和工具工作流参考了 Claude Code。

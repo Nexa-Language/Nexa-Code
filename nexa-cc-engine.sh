@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# nexa-cc-engine — Engine launcher for Claude Code Nexa port (Unix)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
-export PYTHONUNBUFFERED=1
-export PYTHONIOENCODING=utf-8
-export NEXA_JSON_EVENTS=1
-export NEXA_PERMISSION_MODE="${1:-default}"
-exec python -u src/main.py
+set -euo pipefail
+APP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Legacy positional mode remains an alias; workspace defaults to the caller's cwd.
+if [[ "${1:-}" =~ ^(default|plan|auto|bypass)$ ]]; then
+  mode="$1"; shift
+  set -- --mode "$mode" "$@"
+fi
+exec uv run --project "$APP_ROOT" --no-sync nexa-code-engine "$@"

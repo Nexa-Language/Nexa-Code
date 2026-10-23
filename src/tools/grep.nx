@@ -14,11 +14,14 @@
 // =============================================================================
 
 @tool("Search file contents with a regular expression (ripgrep). Output modes: content (matching lines, supports -A/-B/-C context, -n line numbers, head_limit), files_with_matches (file paths), count (match counts). Defaults to files_with_matches. head_limit defaults to 250, 0 for unlimited.")
-fn Grep(pattern: string, path: string, glob: string, output_mode: string, glob_type: string, context_before: number, context_after: number, context_c: number, show_line_numbers: boolean, case_insensitive: boolean, head_limit: number, offset: number, multiline: boolean): string {
+fn Grep(pattern: string, path: string, glob: string, output_mode: string, glob_type: string, context_before: int, context_after: int, context_c: int, show_line_numbers: bool, case_insensitive: bool, head_limit: int, offset: int, multiline: bool): string {
     python! """
 import os
 import shutil
-import subprocess
+import time
+from nexa_code.processes import run
+from nexa_code.tool_services import current_session
+_session = current_session()
 
 DEFAULT_HEAD_LIMIT = 250   # GrepTool.ts:101-104
 
@@ -90,19 +93,21 @@ def _paginate(_lines):
 _rg = shutil.which('rg')
 if _rg:
     try:
-        _proc = subprocess.run([_rg] + _build_rg(), capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
+        _proc = run(_session, [_rg] + _build_rg(), timeout=60)
+        if _proc['status'] != 'completed':
+            return 'Search stopped: ' + str(_proc['status'])
         # M1 Fix: rg returncode 0=matches, 1=no matches, 2+=error（无效正则等）
-        if _proc.returncode not in (0, 1):
-            _err = (_proc.stderr or '').strip()
-            return 'Error: rg failed (exit %d): %s' % (_proc.returncode, _err[:200])
-        _out = (_proc.stdout or '').rstrip('\n')
+        if _proc['exit_code'] not in (0, 1):
+            _err = (_proc['stderr'] or '').strip()
+            return 'Error: rg failed (exit %s): %s' % (_proc['exit_code'], _err[:200])
+        _out = (_proc['stdout'] or '').rstrip('\n')
         if not _out:
             return ''
         _lines = _out.split('\n')
         _lines = _paginate(_lines)
         return '\n'.join(_lines)
-    except Exception:
-        pass  # 降级到 Python
+    except FileNotFoundError:
+        pass  # The executable disappeared after discovery; use the Python fallback.
 
 # fallback: Python re 搜索（rg 不可用）
 import re
@@ -119,12 +124,16 @@ if os.path.isfile(_search_path):
     _files = [_search_path]
 else:
     for _root, _dirs, _fnames in os.walk(_search_path):
+        if _session.cancel.is_set() or time.monotonic() >= _session.deadline:
+            return 'Search stopped: cancelled or deadline exceeded'
         _dirs[:] = [d for d in _dirs if d not in VCS_DIRS]
         for _fn in _fnames:
             _files.append(os.path.join(_root, _fn))
 
 _results = []
 for _f in _files:
+    if _session.cancel.is_set() or time.monotonic() >= _session.deadline:
+        return 'Search stopped: cancelled or deadline exceeded'
     if _glob:
         import fnmatch as _fnm
         if not _fnm.fnmatch(os.path.basename(_f), _glob):

@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nexa-code"
+version = "2.4.0.dev0"
+description = "A checkpointed terminal coding assistant powered by Nexa"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.28,<1",
+    "nexa-lang @ git+https://github.com/Nexa-Language/Nexa.git@c2162637236e4a73feea410c4183672411666521",
+]
+
+[project.optional-dependencies]
+mcp = ["nexa-lang[mcp] @ git+https://github.com/Nexa-Language/Nexa.git@c2162637236e4a73feea410c4183672411666521"]
+anthropic = ["nexa-lang[anthropic] @ git+https://github.com/Nexa-Language/Nexa.git@c2162637236e4a73feea410c4183672411666521"]
+
+[project.scripts]
+nexa-code-engine = "nexa_code.host:main"
+
+[tool.uv.sources]
+nexa-lang = { path = "../../Nexa", editable = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<10",
+    "pytest-timeout>=2.3,<3",
+    "pytest-socket>=0.7,<1",
+    "ruff>=0.17,<0.18",
+    "isort>=8,<10",
+    "ty>=0.0.90,<0.1",
+    "setuptools>=77",
+]
+
+[tool.setuptools.packages.find]
+include = ["nexa_code*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--disable-socket --allow-unix-socket"
+timeout = 40
+markers = ["integration: explicit network/provider/desktop opt-in"]
+
+[tool.ruff]
+line-length = 160
+target-version = "py310"
+include = ["nexa_code/**/*.py", "tests/runtime/**/*.py", "tests/conftest.py", "scripts/**/*.py", "setup.py", "run_harness_bench.py", "ui/app.py"]
+
+[tool.isort]
+profile = "black"
+line_length = 160
+skip_glob = ["src/*", "ui/*", "tests/legacy/*"]
+
+[tool.ty.src]
+include = ["nexa_code", "tests/runtime", "scripts", "setup.py", "run_harness_bench.py", "ui/app.py"]
+
+[tool.ty.environment]
+python-version = "3.10"
+extra-paths = ["../../Nexa"]

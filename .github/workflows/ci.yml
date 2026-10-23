@@ -1,0 +1,54 @@
+name: Nexa Code checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      runtime_ref:
+        description: Released Nexa v2.4.0 source revision
+        default: c2162637236e4a73feea410c4183672411666521
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Nexa-Facility/Nexa-Code
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          path: Nexa-Facility/Nexa-Code
+      - uses: actions/checkout@v7.0.1
+        with:
+          repository: Nexa-Language/Nexa
+          ref: ${{ inputs.runtime_ref || 'c2162637236e4a73feea410c4183672411666521' }}
+          path: Nexa
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: '3.12'
+      - name: Install locked dependencies
+        run: |
+          node -e 'if (Number(process.versions.node.split(".")[0]) < 20) process.exit(1)'
+          uv sync --locked --all-extras
+          npx --yes pnpm@10.18.3 --dir ui-ink install --frozen-lockfile
+      - name: Python checks and offline behavior
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run isort --check-only nexa_code tests/runtime tests/conftest.py scripts setup.py run_harness_bench.py
+          uv run ty check
+          uv run pytest -q
+      - name: Ink checks and actual PTY
+        run: |
+          npx --yes pnpm@10.18.3 --dir ui-ink typecheck
+          npx --yes pnpm@10.18.3 --dir ui-ink test
+          npx --yes pnpm@10.18.3 --dir ui-ink format:check
+          npx --yes pnpm@10.18.3 --dir ui-ink build
+          uv run python scripts/pty_smoke.py
+      - name: Isolated engine wheel
+        run: |
+          uv build --wheel
+          uv run python scripts/check_wheel.py dist/nexa_code-2.4.0.dev0-py3-none-any.whl
