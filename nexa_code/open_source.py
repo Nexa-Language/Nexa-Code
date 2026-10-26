@@ -163,9 +163,11 @@ class SourceSynchronizer:
                 rejected = pending.model_copy(update={"state": "rejected"})
                 self.store.set_reference(self.key, pending.digest, rejected)
                 return rejected
-            if pending.state == "prepared":
-                pending = self._answer(pending)
             current = self.store.current_revision(self.program_id)
+            # Rejection can be persisted before the Author answer commits.
+            if pending.state == "prepared" or (current and current.digest == pending.base_revision):
+                pending = self._answer(pending)
+                current = self.store.current_revision(self.program_id)
             if current and current.parent == pending.revision and read_source(self.path) == pending.source:
                 expected = checked(pending.source, self.path)
                 if (

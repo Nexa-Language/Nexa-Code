@@ -194,8 +194,11 @@ def test_external_author_answer_without_local_journal_blocks_source_overwrite(tm
         client.close()
 
 
-@pytest.mark.parametrize("boundary", ["answer", "source_write", "revision_commit"])
-def test_source_sync_restarts_at_each_persistence_boundary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boundary: str) -> None:
+@pytest.mark.parametrize("boundary", ["prepared", "answer", "source_write", "revision_commit"])
+@pytest.mark.parametrize("reject_before_confirmation", [False, True])
+def test_source_sync_restarts_at_each_persistence_boundary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boundary: str, reject_before_confirmation: bool
+) -> None:
     client = program(tmp_path, [{"text": json.dumps({"clarification": "Which answer?"})}])
     source = client.check().source_digest
     revision = client.propose_source(expected_revision=None, source_digest=source)
@@ -205,7 +208,10 @@ def test_source_sync_restarts_at_each_persistence_boundary(tmp_path: Path, monke
     def reference(name: str, expected: str | None, record: Any, **kwargs: Any) -> str:
         if boundary == "answer" and isinstance(record, SourceSync) and record.state == "pending":
             raise SystemExit("process died after author answer")
-        return original_reference(name, expected, record, **kwargs)
+        result = original_reference(name, expected, record, **kwargs)
+        if boundary == "prepared" and isinstance(record, SourceSync) and record.state == "prepared":
+            raise SystemExit("process died before author answer")
+        return result
 
     def commit(expected: str | None, record: Any, events: Any) -> str:
         if events[0].kind == "source_synchronized":
@@ -227,10 +233,14 @@ def test_source_sync_restarts_at_each_persistence_boundary(tmp_path: Path, monke
     try:
         pending = restarted.source_sync.pending()
         assert pending
+        if reject_before_confirmation:
+            pending = restarted.sync_source(pending.digest, confirmed=False)
+            assert pending.state == "rejected"
         restarted.sync_source(pending.digest, confirmed=True)
         assert restarted.source_sync.pending() is None
         report = restarted.check()
         assert report.program and report.program.goals[0].intent.endswith("Author clarification: 42")
+        assert sum(event.kind == "author_answered" for _, event in restarted.store.events("demo")) == 1
     finally:
         restarted.close()
 
