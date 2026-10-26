@@ -98,7 +98,7 @@ def main() -> None:
 
         try:
             read_until("Ask Nexa")
-            send("/version\r", "2.4.0.dev0")
+            send("/version\r", "3.0.0.dev0")
             send("/theme light\r", "UI setting theme")
             send("write and verify α\r", "APPROVAL · Write")
             send("y", "APPROVAL · Bash")
@@ -133,7 +133,8 @@ def main() -> None:
                     process.kill()
                     process.wait(timeout=2)
             os.close(master)
-            (ROOT / "docs" / "evidence" / "ink-pty.txt").write_text("\n\n".join(evidence), encoding="utf-8")
+            transcript = "\n".join(line.rstrip() for line in "\n\n".join(evidence).splitlines()) + "\n"
+            (ROOT / "docs" / "evidence" / "ink-pty.txt").write_text(transcript, encoding="utf-8")
     print(evidence[-1])
 
 

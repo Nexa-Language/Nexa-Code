@@ -1,6 +1,6 @@
 # Installation and development
 
-This checkout is Nexa Code `2.4.0.dev0`. Its runtime dependency is the released [Nexa v2.4.0](https://github.com/Nexa-Language/Nexa/releases/tag/v2.4.0), pinned to `c2162637236e4a73feea410c4183672411666521`, with `NexaAgent.continue_run`. The repository lockfile uses a sibling editable runtime. Wheel metadata pins the same Git source, and the installation steps below use that explicit source.
+This checkout is Nexa Code `3.0.0.dev0`. Its runtime dependency is the released [Nexa v3.0.0](https://github.com/Nexa-Language/Nexa/releases/tag/v3.0.0), pinned to `274379606e53c90d2d25774f6bb8984c777d0759`, with `NexaAgent.continue_run`. The repository lockfile uses a sibling editable runtime. Wheel metadata pins the same Git source, and the installation steps below use that explicit source.
 
 ## Source installation
 
@@ -9,9 +9,9 @@ Install Python 3.10+, uv, Node.js 20+, and pnpm 10.18.3 using their supported in
 ```bash
 mkdir nexa-work
 cd nexa-work
-git clone https://github.com/Nexa-Language/Nexa.git Nexa
-git -C Nexa checkout c2162637236e4a73feea410c4183672411666521
-mkdir Nexa-Facility
+mkdir -p Nexa-Facility/.runtime
+git clone https://github.com/Nexa-Language/Nexa.git Nexa-Facility/.runtime/nexa-3.0.0
+git -C Nexa-Facility/.runtime/nexa-3.0.0 checkout 274379606e53c90d2d25774f6bb8984c777d0759
 git clone https://github.com/Nexa-Language/Nexa-Code.git Nexa-Facility/Nexa-Code
 cd Nexa-Facility/Nexa-Code
 uv sync --locked --all-extras
@@ -19,7 +19,7 @@ pnpm --dir ui-ink install --frozen-lockfile
 pnpm --dir ui-ink build
 ```
 
-The application changes described here must be present in your Code checkout. Until this work is published, use the local review checkout in the same layout. `uv.lock` resolves `../../Nexa` from the Code directory; a different layout needs an explicit local source override and a regenerated lockfile.
+The application changes described here must be present in your Code checkout. Until this work is published, use the local review checkout in the same layout. `uv.lock` resolves `../.runtime/nexa-3.0.0` from the Code directory; a different layout needs an explicit local source override and a regenerated lockfile.
 
 The `mcp` and `anthropic` extras install optional provider/transport dependencies. Omit an extra when that feature is unused. `uv sync --locked` installs the base host and development checks.
 
@@ -31,6 +31,8 @@ Run from any project, with the Code launcher pointing at this checkout:
 ```
 
 Windows launchers are `nexa-cc.bat` and `nexa-cc-engine.cmd`; they use Node and uv from PATH. The legacy `ui/app.py` entry point launches Ink. The engine is also available as `uv run --project /absolute/Nexa-Code --no-sync nexa-code-engine --cwd /absolute/project` for JSON Lines clients.
+
+For the native terminal, add `--program <source.nx> --environment <environment.json>`; [Open Programs](OPEN_PROGRAMS.md) documents goals, budgets, exact grants and recovery. The configuration below applies to the preserved conversation entry.
 
 ## Model configuration
 
@@ -54,14 +56,14 @@ The Python wheel includes the host and all authoritative `.nx` definitions. The 
 ```bash
 uv build --wheel
 uv venv /absolute/engine-env
-uv pip install --python /absolute/engine-env/bin/python 'nexa-lang @ git+https://github.com/Nexa-Language/Nexa.git@c2162637236e4a73feea410c4183672411666521' 'httpx>=0.28,<1'
-uv pip install --python /absolute/engine-env/bin/python --no-deps dist/nexa_code-2.4.0.dev0-py3-none-any.whl
+uv pip install --python /absolute/engine-env/bin/python 'nexa-lang @ git+https://github.com/Nexa-Language/Nexa.git@274379606e53c90d2d25774f6bb8984c777d0759' 'httpx>=0.28,<1'
+uv pip install --python /absolute/engine-env/bin/python --no-deps dist/nexa_code-3.0.0.dev0-py3-none-any.whl
 /absolute/engine-env/bin/nexa-code-engine --cwd /absolute/project --doctor
 ```
 
 Use `Scripts/python.exe` and `Scripts/nexa-code-engine.exe` on Windows. For optional providers, install the explicit Git requirement with `[mcp,anthropic]` extras. A verified locally built Nexa runtime wheel can replace the Git requirement. The PyPI name `nexa-lang` is owned by a different project: keep the explicit source/artifact reference or `--no-deps` workflow.
 
-`scripts/check_wheel.py` installs the Code wheel into an isolated target with `--no-deps`, uses the already installed explicit runtime, then checks the import path, compiles bundled definitions, loads all 50 tools and executes one fixture turn.
+`scripts/check_wheel.py <code-wheel> --runtime-wheel <runtime-wheel>` creates a fresh isolated environment, installs both actual wheels, asserts their import paths, loads all 50 legacy tools, executes one fixture turn and exercises native check/build/locked replay. `--keep <new-directory>` retains this environment for downstream integration checks.
 
 ## Offline and live checks
 

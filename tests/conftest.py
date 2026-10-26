@@ -17,6 +17,9 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    for item in items:
+        if "oci" in item.keywords and os.environ.get("NEXA_CODE_OCI") != "1":
+            item.add_marker(pytest.mark.skip(reason="Set NEXA_CODE_OCI=1 for credential-free real Docker/OCI verification"))
     if os.environ.get("NEXA_CODE_INTEGRATION") == "1":
         return
     skip = pytest.mark.skip(reason="Set NEXA_CODE_INTEGRATION=1 for explicit network/provider/desktop integration")

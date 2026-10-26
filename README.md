@@ -2,13 +2,13 @@
 
 A terminal coding assistant built with Nexa definitions, the Nexa execution runtime, and Ink/React.
 
-Nexa Code 2.4 把连续对话、审批恢复、预算、取消和工具执行交给 Nexa runtime。.nx 定义 Agent 与 **50 个公开工具**；Python host 管理工作区、会话和协议；Ink 提供独立的 Nexa 终端界面。
+Nexa Code 3.0 新增原生 Open Programs 的目标、证据、修订与补丁授权工作流；2.4 兼容入口继续把连续对话、审批恢复、预算、取消和工具执行交给 Nexa runtime。.nx 定义 Agent 与 **50 个公开工具**；Python host 管理工作区、会话和协议；Ink 提供独立的 Nexa 终端界面。
 
-[安装 / Installation](docs/INSTALL.md) · [升级迁移 / Migration](docs/MIGRATION.md) · [50 tools / 50 commands](docs/FEATURES.md) · [Architecture & protocol](docs/ARCHITECTURE.md) · [文档索引](docs/INDEX.md)
+[Open Programs 3.0](docs/OPEN_PROGRAMS.md) · [安装 / Installation](docs/INSTALL.md) · [升级迁移 / Migration](docs/MIGRATION.md) · [50 tools / 50 commands](docs/FEATURES.md) · [Architecture & protocol](docs/ARCHITECTURE.md) · [文档索引](docs/INDEX.md)
 
 ## 当前版本
 
-本工作树为 Nexa Code 2.4.0.dev0，依赖已发布的 [Nexa v2.4.0](https://github.com/Nexa-Language/Nexa/releases/tag/v2.4.0)，固定源码 SHA 为 [c216263](https://github.com/Nexa-Language/Nexa/commit/c2162637236e4a73feea410c4183672411666521)。安装使用该版本的显式源码来源。PyPI 的同名 nexa-lang 属于其他项目，请按安装页指定来源。
+本工作树为 Nexa Code 3.0.0.dev0，依赖已发布的 [Nexa v3.0.0](https://github.com/Nexa-Language/Nexa/releases/tag/v3.0.0)，固定源码 SHA 为 [2743796](https://github.com/Nexa-Language/Nexa/commit/274379606e53c90d2d25774f6bb8984c777d0759)。安装使用该版本的显式源码来源。PyPI 的同名 nexa-lang 属于其他项目，请按安装页指定来源。
 
 ## 开始使用
 
@@ -16,8 +16,8 @@ Nexa Code 2.4 把连续对话、审批恢复、预算、取消和工具执行交
 
 ~~~text
 work/
-├── Nexa/                    # 指定的 runtime 源码
 └── Nexa-Facility/
+    ├── .runtime/nexa-3.0.0/  # 固定发行源码
     └── Nexa-Code/           # 本仓库
 ~~~
 
@@ -32,6 +32,8 @@ uv run nexa-code-engine --cwd /absolute/project --doctor
 ~~~
 
 启动时直接编译 .nx，无需生成 src/main.py。配置由 runtime 从目标工作区及其父目录的 .nxs 与环境读取，最近目录优先。使用 --model 选择模型，--provider chat|responses|anthropic 选择协议；配置示例见[安装页](docs/INSTALL.md)。
+
+新工作流使用显式 `--program <file.nx> --environment <environment.json>`，详见 [Open Programs](docs/OPEN_PROGRAMS.md)。以下交互保留 2.4 连续对话行为。
 
 ## 日常使用
 
@@ -57,13 +59,13 @@ pnpm --dir ui-ink test
 pnpm --dir ui-ink format:check
 pnpm --dir ui-ink build
 uv build --wheel
-uv run python scripts/check_wheel.py dist/nexa_code-2.4.0.dev0-py3-none-any.whl
+uv run python scripts/check_wheel.py dist/nexa_code-3.0.0.dev0-py3-none-any.whl --runtime-wheel /absolute/nexa_lang-3.0.0-py3-none-any.whl
 uv run python scripts/pty_smoke.py
 ~~~
 
 默认测试禁用网络，通过 fixture provider 驱动真实 runtime、文件工具、子进程和 MCP stdio。PTY 脚本运行实际 Ink 与 Python host，[终端记录](docs/evidence/ink-pty.txt)覆盖命令、审批、文件检查、取消和退出。真实 provider、外部 Web/MCP HTTP 与操作系统通知需独立集成验收；Windows 子进程树清理仍需平台验证。
 
-历史实验报告保留在 docs/reports/，其版本、模型和测试条件属于旧实现。本轮 2.4 未进行性能对比跑分；当前行为及限制以[功能清单](docs/FEATURES.md)为准。
+历史实验报告保留在 docs/reports/，其版本、模型和测试条件属于旧实现。本轮接入未进行性能对比跑分；当前行为及限制以[功能清单](docs/FEATURES.md)为准。
 
 ## 致谢
 

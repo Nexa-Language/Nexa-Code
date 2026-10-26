@@ -4,23 +4,23 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexa-code"
-version = "2.4.0.dev0"
+version = "3.0.0.dev0"
 description = "A checkpointed terminal coding assistant powered by Nexa"
 requires-python = ">=3.10"
 dependencies = [
     "httpx>=0.28,<1",
-    "nexa-lang @ git+https://github.com/Nexa-Language/Nexa.git@c2162637236e4a73feea410c4183672411666521",
+    "nexa-lang @ git+https://github.com/Nexa-Language/Nexa.git@274379606e53c90d2d25774f6bb8984c777d0759",
 ]
 
 [project.optional-dependencies]
-mcp = ["nexa-lang[mcp] @ git+https://github.com/Nexa-Language/Nexa.git@c2162637236e4a73feea410c4183672411666521"]
-anthropic = ["nexa-lang[anthropic] @ git+https://github.com/Nexa-Language/Nexa.git@c2162637236e4a73feea410c4183672411666521"]
+mcp = ["nexa-lang[mcp] @ git+https://github.com/Nexa-Language/Nexa.git@274379606e53c90d2d25774f6bb8984c777d0759"]
+anthropic = ["nexa-lang[anthropic] @ git+https://github.com/Nexa-Language/Nexa.git@274379606e53c90d2d25774f6bb8984c777d0759"]
 
 [project.scripts]
 nexa-code-engine = "nexa_code.host:main"
 
 [tool.uv.sources]
-nexa-lang = { path = "../../Nexa", editable = true }
+nexa-lang = { path = "../.runtime/nexa-3.0.0", editable = true }
 
 [dependency-groups]
 dev = [
@@ -41,7 +41,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "--disable-socket --allow-unix-socket"
 timeout = 40
-markers = ["integration: explicit network/provider/desktop opt-in"]
+markers = ["integration: explicit network/provider/desktop opt-in", "oci: explicit real Docker/OCI fixture test"]
 
 [tool.ruff]
 line-length = 160
@@ -58,4 +58,4 @@ include = ["nexa_code", "tests/runtime", "scripts", "setup.py", "run_harness_ben
 
 [tool.ty.environment]
 python-version = "3.10"
-extra-paths = ["../../Nexa"]
+extra-paths = ["../.runtime/nexa-3.0.0"]

@@ -20,8 +20,8 @@ DEFINITIONS = APP_ROOT / "src" if (APP_ROOT / "src" / "main.nx").exists() else P
 
 def load_definitions(workspace: Path, *, model: str | None = None, provider_api: str = "chat") -> tuple[NexaAgent, dict[str, Any], str]:
     version = importlib.metadata.version("nexa-lang")
-    if version.split(".")[:2] != ["2", "4"] or not hasattr(NexaAgent, "continue_run"):
-        raise RuntimeError("Nexa Code needs the Nexa 2.4 runtime with NexaAgent.continue_run; see docs/INSTALL.md")
+    if tuple(version.split(".")[:2]) not in {("2", "4"), ("3", "0")} or not hasattr(NexaAgent, "continue_run"):
+        raise RuntimeError("Nexa Code needs the Nexa 3.0 runtime (or 2.4 compatibility runtime) with NexaAgent.continue_run; see docs/INSTALL.md")
     definition = DEFINITIONS / "main.nx"
     signature = tuple((str(path), path.stat().st_mtime_ns) for path in sorted(DEFINITIONS.rglob("*.nx")))
     compilation = _compile(signature)

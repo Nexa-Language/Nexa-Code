@@ -1,6 +1,6 @@
 {
   "name": "@nexa-language/code",
-  "version": "2.4.0-dev.0",
+  "version": "3.0.0-dev.0",
   "private": true,
   "type": "module",
   "description": "Nexa Code terminal interface",

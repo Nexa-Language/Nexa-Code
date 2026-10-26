@@ -1,0 +1,19 @@
+language "3.0"
+program Maintain(repo: Repository) {
+    goal bootstrap() -> Int {
+        intent "Return the fixture version"
+        implementation value 3
+    }
+    goal repair(change: ChangeRequest) -> Patch {
+        stage runtime
+        intent "Repair calc.add to return the mathematical sum; preserve unrelated behavior"
+        context repo.snapshot
+        capabilities [repo.read, sandbox.exec, sandbox.write]
+        ensure checks.regression
+        implementation open
+    }
+    on change_request as request {
+        let result = resolve repair(request)
+        propose repo.apply(result) requires human.approval
+    }
+}

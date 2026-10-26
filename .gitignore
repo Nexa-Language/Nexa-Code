@@ -62,3 +62,8 @@ diag_task*.py
 # Build outputs
 build/
 dist/
+
+# Open Programs state and source locks
+.nexa/
+*.nx.lock
+.nexa-intent-*/

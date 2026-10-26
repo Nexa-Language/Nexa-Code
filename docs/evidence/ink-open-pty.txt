@@ -1,0 +1,639 @@
+COMMAND /build
+ N / NEXA CODE · OPEN PROGRAMS 3.0
+ maintain · ready
+ Ready for native command
+ Draft not stored
+ Active not built
+ Budget: 4 model calls · 20000 tokens · 120s
+ Environment: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-open-pty-18lichdm/environment.json
+
+ bootstrap · build · implementation supplied
+ Return the fixture version
+ Checks: typecheck · Reviews: 0
+
+ repair · runtime · open obligation
+ Repair calc.add to return the mathematical sum; preserve unrelated behavior
+ Checks: checks.regression · Reviews: 0
+
+ /help lists native commands · cancellation requires the selected domain + activity ID
+
+ › /build
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE · OPEN PROGRAMS 3.0
+ maintain · build
+ Operation in progress · /status /check /cancel available
+ Draft not stored
+ Active not built
+ Budget: 4 model calls · 20000 tokens · 120s
+ Environment: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-open-pty-18lichdm/environment.json
+
+ bootstrap · build · implementation supplied
+ Return the fixture version
+ Checks: typecheck · Reviews: 0
+
+ repair · runtime · open obligation
+ Repair calc.add to return the mathematical sum; preserve unrelated behavior
+ Checks: checks.regression · Reviews: 0
+
+ /help lists native commands · cancellation requires the selected domain + activity ID
+
+ › Ask Nexa, or / for commands
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE · OPEN PROGRAMS 3.0
+ maintain · ready
+ Operation in progress · /status /check /cancel available
+ Draft 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Active 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Budget: 4 model calls · 20000 tokens · 120s
+ Environment: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-open-pty-18lichdm/environment.json
+
+ bootstrap · build · implementation supplied
+ Return the fixture version
+ Checks: typecheck · Reviews: 0
+
+ repair · runtime · open obligation
+ Repair calc.add to return the mathematical sum; preserve unrelated behavior
+ Checks: checks.regression · Reviews: 0
+
+ /help lists native commands · cancellation requires the selected domain + activity ID
+
+ › Ask Nexa, or / for commands
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE · OPEN PROGRAMS 3.0
+ maintain · ready
+ Ready for native command
+ Draft 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Active 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Budget: 4 model calls · 20000 tokens · 120s
+ Environment: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-open-pty-18lichdm/environment.json
+
+ bootstrap · build · implementation supplied
+ Return the fixture version
+ Checks: typecheck · Reviews: 0
+
+ repair · runtime · open obligation
+ Repair calc.add to return the mathematical sum; preserve unrelated behavior
+ Checks: checks.regression · Reviews: 0
+
+ /help lists native commands · cancellation requires the selected domain + activity ID
+
+ 
+
+COMMAND /locked
+[37m› Ask Nexa, or / for commands
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE · OPEN PROGRAMS 3.0
+ maintain · ready
+ Ready for native command
+ Draft 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Active 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Budget: 4 model calls · 20000 tokens · 120s
+ Environment: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-open-pty-18lichdm/environment.json
+
+ bootstrap · build · implementation supplied
+ Return the fixture version
+ Checks: typecheck · Reviews: 0
+
+ repair · runtime · open obligation
+ Repair calc.add to return the mathematical sum; preserve unrelated behavior
+ Checks: checks.regression · Reviews: 0
+
+ /help lists native commands · cancellation requires the selected domain + activity ID
+
+ › /locked
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE · OPEN PROGRAMS 3.0
+ maintain · locked
+ Operation in progress · /status /check /cancel available
+ Draft 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Active 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Budget: 4 model calls · 20000 tokens · 120s
+ Environment: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-open-pty-18lichdm/environment.json
+
+ bootstrap · build · implementation supplied
+ Return the fixture version
+ Checks: typecheck · Reviews: 0
+
+ repair · runtime · open obligation
+ Repair calc.add to return the mathematical sum; preserve unrelated behavior
+ Checks: checks.regression · Reviews: 0
+
+ /help lists native commands · cancellation requires the selected domain + activity ID
+
+ › Ask Nexa, or / for commands
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE · OPEN PROGRAMS 3.0
+ maintain · ready
+ Operation in progress · /status /check /cancel available
+ Draft 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Active 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Budget: 4 model calls · 20000 tokens · 120s
+ Environment: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-open-pty-18lichdm/environment.json
+
+ bootstrap · build · implementation supplied
+ Return the fixture version
+ Checks: typecheck · Reviews: 0
+
+ repair · runtime · open obligation
+ Repair calc.add to return the mathematical sum; preserve unrelated behavior
+ Checks: checks.regression · Reviews: 0
+
+ /help lists native commands · cancellation requires the selected domain + activity ID
+
+ › Ask Nexa, or / for commands
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE · OPEN PROGRAMS 3.0
+ maintain · ready
+ Ready for native command
+ Draft 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Active 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Budget: 4 model calls · 20000 tokens · 120s
+ Environment: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-open-pty-18lichdm/environment.json
+
+ bootstrap · build · implementation supplied
+ Return the fixture version
+ Checks: typecheck · Reviews: 0
+
+ repair · runtime · open obligation
+ Repair calc.add to return the mathematical sum; preserve unrelated behavior
+ Checks: checks.regression · Reviews: 0
+
+ /help lists native commands · cancellation requires the selected domain + activity ID
+
+ 
+
+COMMAND /maintain {"paths":["calc.py"],"request":"Fix add"}
+[37m› Ask Nexa, or / for commands
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE · OPEN PROGRAMS 3.0
+ maintain · ready
+ Ready for native command
+ Draft 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Active 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Budget: 4 model calls · 20000 tokens · 120s
+ Environment: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-open-pty-18lichdm/environment.json
+
+ bootstrap · build · implementation supplied
+ Return the fixture version
+ Checks: typecheck · Reviews: 0
+
+ repair · runtime · open obligation
+ Repair calc.add to return the mathematical sum; preserve unrelated behavior
+ Checks: checks.regression · Reviews: 0
+
+ /help lists native commands · cancellation requires the selected domain + activity ID
+
+ › /maintain {"paths":["calc.py"],"request":"Fix add"}
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE · OPEN PROGRAMS 3.0
+ maintain · maintain
+ Operation in progress · /status /check /cancel available
+ Draft 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Active 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Budget: 4 model calls · 20000 tokens · 120s
+ Environment: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-open-pty-18lichdm/environment.json
+
+ bootstrap · build · implementation supplied
+ Return the fixture version
+ Checks: typecheck · Reviews: 0
+
+ repair · runtime · open obligation
+ Repair calc.add to return the mathematical sum; preserve unrelated behavior
+ Checks: checks.regression · Reviews: 0
+
+ /help lists native commands · cancellation requires the selected domain + activity ID
+
+ › Ask Nexa, or / for commands
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE · OPEN PROGRAMS 3.0
+ maintain · runtime pending
+ Operation in progress · /status /check /cancel available
+ Draft 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Active 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Budget: 4 model calls · 20000 tokens · 120s
+ Environment: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-open-pty-18lichdm/environment.json
+
+ bootstrap · build · implementation supplied
+ Return the fixture version
+ Checks: typecheck · Reviews: 0
+
+ repair · runtime · open obligation
+ Repair calc.add to return the mathematical sum; preserve unrelated behavior
+ Checks: checks.regression · Reviews: 0
+
+ runtime · repair · pending · a7400d275fc34b7e89c657d238242490
+ Revision 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+
+ /help lists native commands · cancellation requires the selected domain + activity ID
+
+ › Ask Nexa, or / for commands
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE · OPEN PROGRAMS 3.0
+ maintain · accepted
+ Operation in progress · /status /check /cancel available
+ Draft 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Active 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Budget: 4 model calls · 20000 tokens · 120s
+ Environment: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-open-pty-18lichdm/environment.json
+
+ bootstrap · build · implementation supplied
+ Return the fixture version
+ Checks: typecheck · Reviews: 0
+
+ repair · runtime · open obligation
+ Repair calc.add to return the mathematical sum; preserve unrelated behavior
+ Checks: checks.regression · Reviews: 0
+
+ runtime · repair · pending · a7400d275fc34b7e89c657d238242490
+ Revision 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+
+ repair: accepted · 1 model calls · 12 tokens
+ {"base_digest":"9c9cfb996ee7074168ab43c834db757aa4b5d886e4306e407b05554b2162a6fd","changes":[{"before_digest":"a92dafa8d3d88f6e6a8f9dafbd0
+ ad5639e900d59d2a3d7e5821d4c208dad95e8","content":"def add(a, b):\n    return a + b\n","path":"calc.py"}]}
+
+ /help lists native commands · cancellation requires the selected domain + activity ID
+
+ › Ask Nexa, or / for commands
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE · OPEN PROGRAMS 3.0
+ maintain · ready
+ Ready for native command
+ Draft 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Active 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Budget: 4 model calls · 20000 tokens · 120s
+ Environment: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-open-pty-18lichdm/environment.json
+
+ bootstrap · build · implementation supplied
+ Return the fixture version
+ Checks: typecheck · Reviews: 0
+
+ repair · runtime · open obligation
+ Repair calc.add to return the mathematical sum; preserve unrelated behavior
+ Checks: checks.regression · Reviews: 0
+
+ runtime · repair · completed · a7400d275fc34b7e89c657d238242490
+ Revision 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+
+ Saved proposal: /proposal 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b · activity a7400d275fc34b7e89c657d238242490
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │PATCH REVIEW · accepted; permission required                                                                                            │
+ │Proposal 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b                                                               │
+ ���Baseline 9c9cfb996ee7074168ab43c834db757aa4b5d886e4306e407b05554b2162a6fd                                                               │
+ │Paths calc.py                                                                                                                           │
+ │--- a/calc.py                                                                                                                           │
+ │+++ b/calc.py                                                                                                                           │
+ │@@ -1,2 +1,2 @@                                                                                                                         │
+ │ def add(a, b):                                                                                                                         │
+ │-    return a - b                                                                                                                       │
+ │+    return a + b                                                                                                                       │
+ │                                                                                                                                        │
+ │typecheck: passed · valid · b90d12ed5f6571593e127b714403c5bf1fec01f412ed085999b606a12960ee9b                                            │
+ │checks.regression: passed · valid · ba565586673c73706cda30d2771b45211a9337d66d7058d63d11d80242871c5a                                    │
+ │Grant exact proposal: /approve 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b <your name>                             │
+ └────────────────────�
+
+COMMAND /approve 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b pty-user
+�───────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ repair: accepted · 1 model calls · 12 tokens
+ {"base_digest":"9c9cfb996ee7074168ab43c834db757aa4b5d886e4306e407b05554b2162a6fd","changes":[{"before_digest":"a92dafa8d3d88f6e6a8f9dafbd0
+ ad5639e900d59d2a3d7e5821d4c208dad95e8","content":"def add(a, b):\n    return a + b\n","path":"calc.py"}]}
+
+ /help lists native commands · cancellation requires the selected domain + activity ID
+
+ › Ask Nexa, or / for commands
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE · OPEN PROGRAMS 3.0
+ maintain · ready
+ Ready for native command
+ Draft 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Active 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Budget: 4 model calls · 20000 tokens · 120s
+ Environment: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-open-pty-18lichdm/environment.json
+
+ bootstrap · build · implementation supplied
+ Return the fixture version
+ Checks: typecheck · Reviews: 0
+
+ repair · runtime · open obligation
+ Repair calc.add to return the mathematical sum; preserve unrelated behavior
+ Checks: checks.regression · Reviews: 0
+
+ runtime · repair · completed · a7400d275fc34b7e89c657d238242490
+ Revision 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+
+ Saved proposal: /proposal 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b · activity a7400d275fc34b7e89c657d238242490
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │PATCH REVIEW · accepted; permission required                                                                                            │
+ │Proposal 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b                                                               │
+ │Baseline 9c9cfb996ee7074168ab43c834db757aa4b5d886e4306e407b05554b2162a6fd                                                               │
+ │Paths calc.py                                                                                                                           │
+ │--- a/calc.py                                                                                                                           │
+ │+++ b/calc.py                                                                                                                           │
+ │@@ -1,2 +1,2 @@                                                                                                                         │
+ │ def add(a, b):                                                                                                                         │
+ │-    return a - b                                                                                                                       │
+ │+    return a + b                                                                                                                       │
+ │                                                                                                                                        │
+ │typecheck: passed · valid · b90d12ed5f6571593e127b714403c5bf1fec01f412ed085999b606a12960ee9b                                            │
+ │checks.regression: passed · valid · ba565586673c73706cda30d2771b45211a9337d66d7058d63d11d80242871c5a                                    │
+ │Grant exact proposal: /approve 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b <your name>                             │
+ └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ repair: accepted · 1 model calls · 12 tokens
+ {"base_digest":"9c9cfb996ee7074168ab43c834db757aa4b5d886e4306e407b05554b2162a6fd","changes":[{"before_digest":"a92dafa8d3d88f6e6a8f9dafbd0
+ ad5639e900d59d2a3d7e5821d4c208dad95e8","content":"def add(a, b):\n    return a + b\n","path":"calc.py"}]}
+
+ /help lists native commands · cancellation requires the selected domain + activity ID
+
+ › /approve 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b pty-user
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE · OPEN PROGRAMS 3.0
+ maintain · ready
+ Ready for native command
+ Draft 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Active 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Budget: 4 model calls · 20000 tokens · 120s
+ Environment: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-open-pty-18lichdm/environment.json
+
+ bootstrap · build · implementation supplied
+ Return the fixture version
+ Checks: typecheck · Reviews: 0
+
+ repair · runtime · open obligation
+ Repair calc.add to return the mathematical sum; preserve unrelated behavior
+ Checks: checks.regression · Reviews: 0
+
+ runtime · repair · completed · a7400d275fc34b7e89c657d238242490
+ Revision 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+
+ Saved proposal: /proposal 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b · activity a7400d275fc34b7e89c657d238242490
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │PATCH REVIEW · accepted; permission required                                                                                            │
+ │Proposal 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b                                                               │
+ │Baseline 9c9cfb996ee7074168ab43c834db757aa4b5d886e4306e407b05554b2162a6fd                                                               │
+ │Paths calc.py                                                                                                                           │
+ │--- a/calc.py                                                                                                                           │
+ │+++ b/calc.py                                                                                                                           │
+ │@@ -1,2 +1,2 @@                                                                                                                         │
+ │ def add(a, b):                                                                                                                         │
+ │-    return a - b                                                                                                                       │
+ │+    return a + b                                                                                                                       │
+ │                                                                                                                                        │
+ │typecheck: passed · valid · b90d12ed5f6571593e127b714403c5bf1fec01f412ed085999b606a12960ee9b                                            │
+ │checks.regression: passed · valid · ba565586673c73706cda30d2771b45211a9337d66d7058d63d11d80242871c5a                                    │
+ │Grant exact proposal: /approve 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b <your name>                             │
+ └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ repair: accepted · 1 model calls · 12 tokens
+ {"base_digest":"9c9cfb996ee7074168ab43c834db757aa4b5d886e4306e407b05554b2162a6fd","changes":[{"before_digest":"a92dafa8d3d88f6e6a8f9dafbd0
+ ad5639e900d59d2a3d7e5821d4c208dad95e8","content":"def add(a, b):\n    return a + b\n","path":"calc.py"}]}
+
+ /help lists native commands · cancellation requires the selected domain + activity ID
+
+ ┌────────────────────────────────────���───────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │Confirm grant for the reviewed proposal?                                                                                                │
+ │9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b · y confirm / n return                                                 │
+ └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+
+COMMAND /apply 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b fda2f13626c13b5e93b653a661e07e68acca89cd227d41c26fbc1b40458283a7
+ b):                                                                                                                         │
+ │-    return a - b                                                                                                                       │
+ │+    return a + b                                                                                                                       │
+ │                                                                                                                                        │
+ │typecheck: passed · valid · b90d12ed5f6571593e127b714403c5bf1fec01f412ed085999b606a12960ee9b                                            │
+ │checks.regression: passed · valid · ba565586673c73706cda30d2771b45211a9337d66d7058d63d11d80242871c5a                                    │
+ │Grant exact proposal: /approve 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b <your name>                             │
+ │Apply: /apply 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b                                                          │
+ │fda2f13626c13b5e93b653a661e07e68acca89cd227d41c26fbc1b40458283a7                                                                        │
+ └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ repair: accepted · 1 model calls · 12 tokens
+ {"base_digest":"9c9cfb996ee7074168ab43c834db757aa4b5d886e4306e407b05554b2162a6fd","changes":[{"before_digest":"a92dafa8d3d88f6e6a8f9dafbd0
+ ad5639e900d59d2a3d7e5821d4c208dad95e8","content":"def add(a, b):\n    return a + b\n","path":"calc.py"}]}
+
+ Grant fda2f13626c13b5e93b653a661e07e68acca89cd227d41c26fbc1b40458283a7 · expires 2026-10-26T08:01:07.029Z
+
+ /help lists native commands · cancellation requires the selected domain + activity ID
+
+ › Ask Nexa, or / for commands
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE · OPEN PROGRAMS 3.0
+ maintain · grant issued; apply explicitly
+ Ready for native command
+ Draft 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Active 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Budget: 4 model calls · 20000 tokens · 120s
+ Environment: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-open-pty-18lichdm/environment.json
+
+ bootstrap · build · implementation supplied
+ Return the fixture version
+ Checks: typecheck · Reviews: 0
+
+ repair · runtime · open obligation
+ Repair calc.add to return the mathematical sum; preserve unrelated behavior
+ Checks: checks.regression · Reviews: 0
+
+ runtime · repair · completed · a7400d275fc34b7e89c657d238242490
+ Revision 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+
+ Saved proposal: /proposal 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b · activity a7400d275fc34b7e89c657d238242490
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │PATCH REVIEW · accepted; permission required                                                                                            │
+ │Proposal 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b                                                               │
+ │Baseline 9c9cfb996ee7074168ab43c834db757aa4b5d886e4306e407b05554b2162a6fd                                                               │
+ │Paths calc.py                                                                                                                           │
+ │--- a/calc.py                                                                                                                           │
+ │+++ b/calc.py                                                                                                                           │
+ │@@ -1,2 +1,2 @@                                                                                                                         │
+ │ def add(a, b):                                                                                                                         │
+ │-    return a - b                                                                                                                       │
+ │+    return a + b                                                                                                                       │
+ │                                                                                                                                        │
+ │typecheck: passed · valid · b90d12ed5f6571593e127b714403c5bf1fec01f412ed085999b606a12960ee9b                                            │
+ │checks.regression: passed · valid · ba565586673c73706cda30d2771b45211a9337d66d7058d63d11d80242871c5a                                    │
+ │Grant exact proposal: /approve 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b <your name>                             │
+ │Apply: /apply 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b                                                          │
+ │fda2f13626c13b5e93b653a661e07e68acca89cd227d41c26fbc1b40458283a7                                                                        │
+ └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ repair: accepted · 1 model calls · 12 tokens
+ {"base_digest":"9c9cfb996ee7074168ab43c834db757aa4b5d886e4306e407b05554b2162a6fd","changes":[{"before_digest":"a92dafa8d3d88f6e6a8f9dafbd0
+ ad5639e900d59d2a3d7e5821d4c208dad95e8","content":"def add(a, b):\n    return a + b\n","path":"calc.py"}]}
+
+ Grant fda2f13626c13b5e93b653a661e07e68acca89cd227d41c26fbc1b40458283a7 · expires 2026-10-26T08:01:07.029Z
+
+ /help lists native commands · cancellation requires the selected domain + activity ID
+
+ ›/apply 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b fda2f13626c13b5e93b653a661e07e68acca89cd227d41c26fbc1b40458283a7
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE · OPEN PROGRAMS 3.0
+ maintain · apply
+ Operation in progress · /status /check /cancel available
+ Draft 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Active 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Budget: 4 model calls · 20000 tokens · 120s
+ Environment: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-open-pty-18lichdm/environment.json
+
+ bootstrap · build · implementation supplied
+ Return the fixture version
+ Checks: typecheck · Reviews: 0
+
+ repair · runtime · open obligation
+ Repair calc.add to return the mathematical sum; preserve unrelated behavior
+ Checks: checks.regression · Reviews: 0
+
+ runtime · repair · completed · a7400d275fc34b7e89c657d238242490
+ Revision 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+
+ Saved proposal: /proposal 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b · activity a7400d275fc34b7e89c657d238242490
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │PATCH REVIEW · accepted; permission required                                                                                            │
+ │Proposal 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b                                                               │
+ │Baseline 9c9cfb996ee7074168ab43c834db757aa4b5d886e4306e407b05554b2162a6fd                                                               │
+ │Paths calc.py                                                                                                                           │
+ │--- a/calc.py                                                                                                                           │
+ │+++ b/calc.py                                                                                                                           │
+ │@@ -1,2 +1,2 @@                                                                                                                         │
+ │ def add(a, b):                                                                                                                         │
+ │-    return a - b                                                                                                                       │
+ │+    return a + b                                                                                                                       │
+ │                                                                                                                                        │
+ │typecheck: passed · valid · b90d12ed5f6571593e127b714403c5bf1fec01f412ed085999b606a12960ee9b                                            │
+ │checks.regression: passed · valid · ba565586673c73706cda30d2771b45211a9337d66d7058d63d11d80242871c5a                                    │
+ │Grant exact proposal: /approve 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b <your name>                             │
+ │Apply: /apply 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b                                                          │
+ │fda2f13626c13b5e93b653a661e07e68acca89cd227d41c26fbc1b40458283a7                                                                        │
+ └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ repair: accepted · 1 model calls · 12 tokens
+ {"base_digest":"9c9cfb996ee7074168ab43c834db757aa4b5d886e4306e407b05554b2162a6fd","changes":[{"before_digest":"a92dafa8d3d88f6e6a8f9dafbd0
+ ad5639e900d59d2a3d7e5821d4c208dad95e8","content":"def add(a, b):\n    return a + b\n","path":"calc.py"}]}
+
+ Grant fda2f13626c13b5e93b653a661e07e68acca89cd227d41c26fbc1b40458283a7 · expires 2026-10-26T08:01:07.029Z
+
+ /help lists native commands · cancellation requires the selected domain + activity ID
+
+ › Ask Nexa, or / for commands
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE · OPEN PROGRAMS 3.0
+ maintain · applied
+ Operation in progress · /status /check /cancel available
+ Draft 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Active 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Budget: 4 model calls · 20000 tokens · 120s
+ Environment: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-open-pty-18lichdm/environment.json
+
+ bootstrap · build · implementation supplied
+ Return the fixture version
+ Checks: typecheck · Reviews: 0
+
+ repair · runtime · open obligation
+ Repair calc.add to return the mathematical sum; preserve unrelated behavior
+ Checks: checks.regression · Reviews: 0
+
+ runtime · repair · completed · a7400d275fc34b7e89c657d238242490
+ Revision 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+
+ Saved proposal: /proposal 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b · activity a7400d275fc34b7e89c657d238242490
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │PATCH REVIEW · accepted; permission required                                                                                            │
+ │Proposal 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b                                                               │
+ │Baseline 9c9cfb996ee7074168ab43c834db757aa4b5d886e4306e407b05554b2162a6fd                                                               │
+ │Paths calc.py                                                                                                                           │
+ │--- a/calc.py                                                                                                                           │
+ │+++ b/calc.py                                                                                                                           │
+ │@@ -1,2 +1,2 @@                                                                                                                         │
+ │ def add(a, b):                                                                                                                         │
+ │-    return a - b                                                                                                                       │
+ │+    return a + b                                                                                                                       │
+ │                                                                                                                                        │
+ │typecheck: passed · valid · b90d12ed5f6571593e127b714403c5bf1fec01f412ed085999b606a12960ee9b                                            │
+ │checks.regression: passed · valid · ba565586673c73706cda30d2771b45211a9337d66d7058d63d11d80242871c5a                                    │
+ │Grant exact proposal: /approve 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b <your name>                             │
+ │Apply: /apply 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b                                                          │
+ │fda2f13626c13b5e93b653a661e07e68acca89cd227d41c26fbc1b40458283a7                                                                        │
+ └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ repair: accepted · 1 model calls · 12 tokens
+ {"base_digest":"9c9cfb996ee7074168ab43c834db757aa4b5d886e4306e407b05554b2162a6fd","changes":[{"before_digest":"a92dafa8d3d88f6e6a8f9dafbd0
+ ad5639e900d59d2a3d7e5821d4c208dad95e8","content":"def add(a, b):\n    return a + b\n","path":"calc.py"}]}
+
+ Grant fda2f13626c13b5e93b653a661e07e68acca89cd227d41c26fbc1b40458283a7 · expires 2026-10-26T08:01:07.029Z
+
+ applied: 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b
+ calc.py
+
+ /help lists native commands · cancellation requires the selected domain + activity ID
+
+ › Ask Nexa, or / for commands
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE · OPEN PROGRAMS 3.0
+ maintain · applied
+ Ready for native command
+ Draft 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Active 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Budget: 4 model calls · 20000 tokens · 120s
+ Environment: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-open-pty-18lichdm/environment.json
+
+ bootstrap · build · implementation supplied
+ Return the fixture version
+ Checks: typecheck · Reviews: 0
+
+ repair · ru
+
+COMMAND /status
+ N / NEXA CODE · OPEN PROGRAMS 3.0
+ maintain · ready
+ Ready for native command
+ Draft 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Active 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Budget: 4 model calls · 20000 tokens · 120s
+ Environment: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-open-pty-18lichdm/environment.json
+
+ bootstrap · build · implementation supplied
+ Return the fixture version
+ Checks: typecheck · Reviews: 0
+
+ repair · runtime · open obligation
+ Repair calc.add to return the mathematical sum; preserve unrelated behavior
+ Checks: checks.regression · Reviews: 0
+
+ runtime · repair · completed · a7400d275fc34b7e89c657d238242490
+ Revision 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+
+ Saved proposal: /proposal 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b · activity a7400d275fc34b7e89c657d238242490
+
+ Saved grant fda2f13626c13b5e93b653a661e07e68acca89cd227d41c26fbc1b40458283a7 · proposal
+ 9a1ee408b8b89a90bd46ae1ddf3172caa6acab4a5cb1724e859b9963ac4c214b · 2026-10-26T08:01:07.029Z
+
+ /help lists native commands · cancellation requires the selected domain + activity ID
+
+ › /status
+ Enter send · Ctrl+J newline · Esc cancel · Ctrl+O details
+ N / NEXA CODE · OPEN PROGRAMS 3.0
+ maintain · ready
+ Ready for native command
+ Draft 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Active 3065af5e9a878a6a41af43fa6bec61719d92b6e1fb000a9951bbfbe7e0d67caa
+ Budget: 4 model calls · 20000 tokens · 120s
+ Environment: /private/var/folders/72/g2pkxtqx0xlb9nth6txt4jgw0000gn/T/nexa-open-pty-18lichdm/environment.json
+
+ bootstrap · build · implementation supplied
+ Return the fixture version
+ Checks: typecheck · Reviews: 0
+
+ repair · runtime · open obligation
+ Repair calc.add to return the mathematical sum; preserve unrelated behavior
+ Checks: checks.regression · Reviews: 0
+
+ runtime · repair · completed · a740
+
+PASS: real Ink/host/OCI check/build/locked/maintenance; full diff and evidence; explicit grant confirmation; exact apply; unchanged host before grant/apply; restart restores proposal/grant; clean exit

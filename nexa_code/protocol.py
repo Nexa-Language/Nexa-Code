@@ -34,6 +34,16 @@ def parse_request(line: str, *, legacy: bool = False, legacy_run_id: str | None 
             value["decision"] = "allow_once" if value.get("approved") is True or value.get("decision") in {"allow", "allow_once"} else "deny"
     if type(value.get("version")) is not int or value["version"] != VERSION:
         raise ProtocolError("Unsupported protocol version; expected 1")
+    kind = value.get("type")
+    if isinstance(kind, str) and kind.startswith("open_"):
+        from pydantic import ValidationError
+
+        from .open_protocol import REQUEST_ADAPTER
+
+        try:
+            return REQUEST_ADAPTER.validate_python(value).model_dump(mode="json")
+        except ValidationError as error:
+            raise ProtocolError("Invalid native request fields or identity") from error
     if value.get("type") not in REQUESTS or not isinstance(value.get("request_id"), str) or not value["request_id"]:
         raise ProtocolError("Known type and nonempty request_id are required")
     required = {

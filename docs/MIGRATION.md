@@ -1,6 +1,10 @@
-# Migration to Nexa Code 2.4
+# Migration to Nexa Code 3.0
 
-Nexa Code `2.4.0.dev0` uses the released Nexa v2.4.0 runtime. The host loads `.nx` declarations through the public compiler, calls `NexaAgent.execute` for a task, and `continue_run` for the next settled user turn. Persisted state uses Nexa `RunState`, SQLite checkpoints, tool journals and artifacts. All 50 public tool names and 50 slash names/aliases remain discoverable; the [inventory](FEATURES.md) records behavior and limitations.
+Nexa Code `3.0.0.dev0` adds the explicit `--program` entry for [Open Programs](OPEN_PROGRAMS.md). Start a separate native database with `--state`; existing 2.4 conversations, checkpoint databases and approvals stay in their original paths. Native proposal grants are separately identified and never inherit legacy tool rules. The released Nexa 3.0 runtime contains the 2.4 compatibility compiler/runtime.
+
+## Preserved 2.4 conversation workflow
+
+The conversation entry uses the released Nexa v3.0.0 runtime in its 2.4 compatibility mode. The host loads `.nx` declarations through the public compiler, calls `NexaAgent.execute` for a task, and `continue_run` for the next settled user turn. Persisted state uses Nexa `RunState`, SQLite checkpoints, tool journals and artifacts. All 50 public tool names and 50 slash names/aliases remain discoverable; the [inventory](FEATURES.md) records behavior and limitations.
 
 ## Sessions and recovery
 

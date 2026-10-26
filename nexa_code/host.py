@@ -28,6 +28,8 @@ class Host:
 
     def handle(self, request: dict[str, Any]) -> None:
         kind = request["type"]
+        if kind.startswith("open_"):
+            raise ProtocolError("Native requests require starting the engine with --program")
         if kind == "command" and request["name"].strip() in {"/exit", "/quit"}:
             kind = "exit"
         if kind == "exit":
@@ -105,6 +107,14 @@ def main() -> int:
     parser.add_argument("--fixture", type=Path, help="Explicit deterministic provider fixture; makes no model network requests")
     parser.add_argument("--legacy-protocol", action="store_true", help="Adapt unversioned 0.1 requests for one migration period")
     parser.add_argument("--doctor", action="store_true")
+    parser.add_argument("--program", type=Path, help="Explicit Nexa 3.0 Open Program source")
+    parser.add_argument("--environment", type=Path, help="Native compiler environment JSON")
+    parser.add_argument("--state", type=Path, default=Path(".nexa/open-programs.sqlite3"))
+    parser.add_argument("--program-id")
+    parser.add_argument("--docker-context")
+    parser.add_argument("--max-model-calls", type=int, default=4)
+    parser.add_argument("--max-tokens", type=int, default=20000)
+    parser.add_argument("--timeout", type=float, default=120)
     args = parser.parse_args()
     fixture = args.fixture.resolve() if args.fixture else None
     os.environ["NEXA_QUIET"] = "1"
@@ -119,6 +129,10 @@ def main() -> int:
     previous_term = signal.signal(signal.SIGTERM, interrupted)
     try:
         os.chdir(args.cwd.expanduser().resolve(strict=True))
+        if args.program:
+            from .open_host import run_native
+
+            return run_native(args, emitter)
         from .commands import doctor
         from .fixture_provider import FixtureProvider
         from .session import Session

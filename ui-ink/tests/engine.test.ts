@@ -36,3 +36,11 @@ test('startup timeout cleans up an unresponsive child', async () => {
   const events = await fixture("process.stdin.resume();process.stdin.on('data',()=>process.exit(0))", 20);
   assert(events.some((event) => event.type === 'error' && event.code === 'STARTUP_TIMEOUT'));
 });
+test('unterminated oversized frame is bounded before readline finishes', async () => {
+  const events = await fixture(
+    "process.stdout.write('x'.repeat(2000100));process.stdin.resume();process.stdin.on('data',()=>process.exit(0))",
+    1000,
+  );
+  assert(events.some((event) => event.type === 'error' && event.code === 'PROTOCOL_ERROR'));
+  assert(!events.some((event) => event.type === 'error' && event.code === 'STARTUP_TIMEOUT'));
+});

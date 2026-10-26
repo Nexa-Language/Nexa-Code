@@ -860,7 +860,7 @@ wheels = [
 
 [[package]]
 name = "nexa-code"
-version = "2.4.0.dev0"
+version = "3.0.0.dev0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
@@ -889,9 +889,9 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.28,<1" },
-    { name = "nexa-lang", editable = "../../Nexa" },
-    { name = "nexa-lang", extras = ["anthropic"], marker = "extra == 'anthropic'", editable = "../../Nexa" },
-    { name = "nexa-lang", extras = ["mcp"], marker = "extra == 'mcp'", editable = "../../Nexa" },
+    { name = "nexa-lang", editable = "../.runtime/nexa-3.0.0" },
+    { name = "nexa-lang", extras = ["anthropic"], marker = "extra == 'anthropic'", editable = "../.runtime/nexa-3.0.0" },
+    { name = "nexa-lang", extras = ["mcp"], marker = "extra == 'mcp'", editable = "../.runtime/nexa-3.0.0" },
 ]
 provides-extras = ["mcp", "anthropic"]
 
@@ -908,8 +908,9 @@ dev = [
 
 [[package]]
 name = "nexa-lang"
-source = { editable = "../../Nexa" }
+source = { editable = "../.runtime/nexa-3.0.0" }
 dependencies = [
+    { name = "anyio" },
     { name = "jsonschema" },
     { name = "lark" },
     { name = "openai" },
@@ -932,6 +933,7 @@ mcp = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", marker = "extra == 'anthropic'", specifier = ">=2.1,<3" },
+    { name = "anyio", specifier = ">=4.14.2,<5" },
     { name = "jsonschema", specifier = ">=4.25.1,<5" },
     { name = "lark", specifier = ">=1.3.1,<2" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=2.3,<3" },

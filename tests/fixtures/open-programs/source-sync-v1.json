@@ -1,0 +1,17 @@
+{
+  "digest": "cd67f27603e2ec0ff8ee26afbb069fc4b500605c189a5bc2bb83099431bc24db",
+  "record": {
+    "program_id": "demo",
+    "path": "/fixture/demo.nx",
+    "base_revision": "base",
+    "revision": "clarified",
+    "base_source": "old source",
+    "base_digest": "old",
+    "source": "clarified source",
+    "source_digest": "new",
+    "clarification_id": "request",
+    "answer": "42",
+    "diff": "-old\n+clarified\n",
+    "state": "pending"
+  }
+}

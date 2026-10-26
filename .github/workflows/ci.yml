@@ -3,12 +3,6 @@ on:
   push:
   pull_request:
   workflow_dispatch:
-    inputs:
-      runtime_ref:
-        description: Released Nexa v2.4.0 source revision
-        default: c2162637236e4a73feea410c4183672411666521
-        required: true
-        type: string
 permissions:
   contents: read
 jobs:
@@ -24,8 +18,8 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           repository: Nexa-Language/Nexa
-          ref: ${{ inputs.runtime_ref || 'c2162637236e4a73feea410c4183672411666521' }}
-          path: Nexa
+          ref: 274379606e53c90d2d25774f6bb8984c777d0759
+          path: Nexa-Facility/.runtime/nexa-3.0.0
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           python-version: '3.12'
@@ -48,7 +42,13 @@ jobs:
           npx --yes pnpm@10.18.3 --dir ui-ink format:check
           npx --yes pnpm@10.18.3 --dir ui-ink build
           uv run python scripts/pty_smoke.py
+      - name: Native OCI and actual Open Programs PTY
+        run: |
+          docker pull python@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704
+          NEXA_CODE_OCI=1 uv run pytest -q -m oci
+          uv run python scripts/pty_open_smoke.py
       - name: Isolated engine wheel
         run: |
           uv build --wheel
-          uv run python scripts/check_wheel.py dist/nexa_code-2.4.0.dev0-py3-none-any.whl
+          uv build ../.runtime/nexa-3.0.0 --wheel --out-dir dist/runtime
+          uv run python scripts/check_wheel.py dist/nexa_code-3.0.0.dev0-py3-none-any.whl --runtime-wheel dist/runtime/nexa_lang-3.0.0-py3-none-any.whl
