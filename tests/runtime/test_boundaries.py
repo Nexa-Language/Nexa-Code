@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -60,7 +61,9 @@ def test_cancel_received_before_worker_execution_is_retained(workspace: Path, mo
 @pytest.mark.parametrize("stop", ["deadline", "cancel"])
 def test_http_deadline_cancel_closes_inflight_operation(workspace: Path, monkeypatch: pytest.MonkeyPatch, method: str, stop: str) -> None:
     session = Session(workspace, provider=FixtureProvider([]))
-    session.deadline = time.monotonic() + (0.15 if stop == "deadline" else 10)
+    clock = [0.0]
+    session.deadline = 1.0
+    monkeypatch.setattr("nexa_code.http_tools.time", SimpleNamespace(monotonic=lambda: clock[0]))
     entered, closed = threading.Event(), threading.Event()
 
     async def delayed(*args: Any, **kwargs: Any) -> Any:
@@ -85,6 +88,8 @@ def test_http_deadline_cancel_closes_inflight_operation(workspace: Path, monkeyp
     assert entered.wait(2)
     if stop == "cancel":
         session.request_cancel()
+    else:
+        clock[0] = session.deadline
     worker.join(2)
     assert not worker.is_alive()
     assert closed.is_set()
