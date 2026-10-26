@@ -102,7 +102,7 @@ def doctor(workspace: Path) -> dict[str, Any]:
         "provider_credentials": {key: bool(os.environ.get(key)) for key in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "API_KEY")},
         "nxs_present_in_workspace": bool(list(workspace.glob("*.nxs"))),
         "configuration": "Runtime resolves .nxs from selected cwd and its parents; nearest scope wins. Values are never printed.",
-        "distribution": "Source checkout: uv.lock uses ../../Nexa; wheel metadata pins released Nexa v2.4.0 at c2162637236e4a73feea410c4183672411666521.",
+        "distribution": "Source checkout: uv.lock uses ../.runtime/nexa-3.0.0; wheel metadata pins Nexa v3.0.0 at 274379606e53c90d2d25774f6bb8984c777d0759.",
     }
 
 

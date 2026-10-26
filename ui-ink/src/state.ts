@@ -146,4 +146,5 @@ export function reduceEvent(state: State, event: EngineEvent): State {
     case 'ui_setting':
       return next;
   }
+  return next;
 }

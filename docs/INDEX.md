@@ -1,7 +1,8 @@
 # Nexa Code documentation
 
-Current Nexa Code development checkout, using released Nexa v2.4.0:
+Current Nexa Code development checkout, using released Nexa v3.0.0:
 
+- [Open Programs 3.0](OPEN_PROGRAMS.md): goals, source CAS, native activities, explicit grants, OCI and recovery.
 - [Installation and development](INSTALL.md): source layout, explicit runtime pin, configuration and wheel installation.
 - [Migration](MIGRATION.md): native sessions, legacy transcripts, permission scopes and changed behavior.
 - [Feature inventory](FEATURES.md): all 50 tools and 50 commands, paths, checks and limits.

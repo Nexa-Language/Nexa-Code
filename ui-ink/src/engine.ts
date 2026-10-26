@@ -12,6 +12,14 @@ export type EngineOptions = {
   model?: string;
   provider?: string;
   fixture?: string;
+  program?: string;
+  programEnvironment?: string;
+  state?: string;
+  programId?: string;
+  dockerContext?: string;
+  maxModelCalls?: string;
+  maxTokens?: string;
+  timeout?: string;
   command?: { executable: string; args: string[] };
   startupTimeout?: number;
   environment?: NodeJS.ProcessEnv;
@@ -25,23 +33,23 @@ export class Engine {
   private stopping = false;
   private sequence = 0;
   private diagnosticSequence = 1_000_000_000;
+  private frameBytes = 0;
 
   constructor(
     private onEvent: (event: EngineEvent) => void,
     private onExit: (code: number | null, signal: NodeJS.Signals | null) => void,
     opts: EngineOptions,
   ) {
-    const args = [
-      'run',
-      '--project',
-      opts.projectRoot,
-      '--no-sync',
-      'nexa-code-engine',
-      '--cwd',
-      opts.cwd,
-      '--mode',
-      opts.permissionMode ?? 'default',
-    ];
+    const args = ['run', '--project', opts.projectRoot, '--no-sync', 'nexa-code-engine', '--cwd', opts.cwd];
+    if (!opts.program) args.push('--mode', opts.permissionMode ?? 'default');
+    if (opts.program) args.push('--program', opts.program);
+    if (opts.programEnvironment) args.push('--environment', opts.programEnvironment);
+    if (opts.state) args.push('--state', opts.state);
+    if (opts.programId) args.push('--program-id', opts.programId);
+    if (opts.dockerContext) args.push('--docker-context', opts.dockerContext);
+    if (opts.maxModelCalls) args.push('--max-model-calls', opts.maxModelCalls);
+    if (opts.maxTokens) args.push('--max-tokens', opts.maxTokens);
+    if (opts.timeout) args.push('--timeout', opts.timeout);
     if (opts.provider) args.push('--provider', opts.provider);
     if (opts.session) args.push('--session', opts.session);
     if (opts.model) args.push('--model', opts.model);
@@ -52,13 +60,29 @@ export class Engine {
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: false,
     });
+    this.proc.stdout.on('data', (chunk: Buffer) => {
+      if (this.stopping) return;
+      for (let offset = 0; offset < chunk.length; ) {
+        const newline = chunk.indexOf(10, offset);
+        const end = newline < 0 ? chunk.length : newline;
+        this.frameBytes += end - offset;
+        if (this.frameBytes > 2_000_000) {
+          this.error('PROTOCOL_ERROR', 'Event exceeds 2 MB');
+          this.stop();
+          this.proc.stdout.pause();
+          return;
+        }
+        if (newline >= 0) this.frameBytes = 0;
+        offset = end + 1;
+      }
+    });
     this.reader = createInterface({ input: this.proc.stdout });
     this.reader.on('line', (line) => {
       try {
         const event = parseEvent(line);
         if (event.sequence <= this.sequence) throw new Error('Non-monotonic event sequence');
         this.sequence = event.sequence;
-        if (event.type === 'ready') {
+        if (event.type === 'ready' || event.type === 'open_ready') {
           this.ready = true;
           if (!this.stopping) this.clearTimers();
         }

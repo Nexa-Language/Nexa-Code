@@ -160,7 +160,7 @@ export function App({ options }: { options: EngineOptions }): React.JSX.Element 
         <Text bold color={theme.accent}>
           N / NEXA CODE
         </Text>
-        <Text color={theme.muted}>A deliberate workspace for code · runtime 2.4</Text>
+        <Text color={theme.muted}>A deliberate workspace for code · Nexa 3.0 · 2.4 conversation mode</Text>
       </Box>
       {!state.entries.length && (
         <Text>

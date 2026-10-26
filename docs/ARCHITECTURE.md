@@ -7,7 +7,7 @@ Ink / React
 Python host
   explicit workspace → compile/load .nx → Session / Policy / services
         │ execute / continue_run / checkpoint approval
-Nexa 2.4
+Nexa 3.0 compatibility runtime
   provider loop → RunState → tool dispatcher → SQLite / artifacts
 ```
 
@@ -17,7 +17,11 @@ Nexa 2.4
 
 The input thread remains available for cancellation and answers while one worker handles a task. Shutdown signals cancellation, drains process cleanup, waits for the worker and emits `session_end`. Cleanup failures carry an error/unclean status. The UI reports malformed events, signal/nonzero exits and startup deadlines; it escalates a stalled exit from protocol request to TERM/KILL.
 
-## Protocol v1
+## Native Open Programs
+
+The explicit `--program` entry uses `OpenProgram`/`OpenHost`: `OpenCompiler`, `ProgramSession`, `ProgramStore` and `AuthorProtocol` own native semantics. `open_protocol.py` defines strict request types; `open_events.py` validates native event payloads before transport. Ink has a separate native reducer and panel. Source synchronization is a durable client journal with native IR validation and revision CAS. Runtime activities are resolved from stored event object digests, and selected IDs are re-read from the native controller. Build uses an immutable checked source snapshot; run verifies the activity revision before resolution. [Open Programs](OPEN_PROGRAMS.md) documents the native command and event fields.
+
+## Protocol v1 (conversation mode)
 
 Each request is one UTF-8 JSON object followed by newline, up to 2 MB. `version: 1`, nonempty `request_id` and known `type` are required. `nexa_code/protocol.py` validates requests.
 

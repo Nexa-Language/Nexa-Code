@@ -9,42 +9,51 @@ export type Approval = {
   mode: string;
   diff: string;
 };
-export type EngineEvent = Base &
-  (
-    | { type: 'ready'; model: string; cwd: string; mode: string; migration: string[] }
-    | { type: 'session_info'; cwd: string; model: string; mode: string; checkpoint: string | null }
-    | { type: 'session_history'; messages: Array<{ role: 'user' | 'assistant'; content: string }> }
-    | { type: 'assistant_token'; content: string }
-    | { type: 'tool_call'; name: string; args: Record<string, unknown> }
-    | { type: 'tool_result'; name: string; result: string; success: boolean }
-    | Approval
-    | { type: 'command_result'; name: string; result: string }
-    | { type: 'model_list'; current: string; models: Array<{ name: string }> }
-    | { type: 'session_list'; sessions: Array<{ id: string; title: string; model: string; created_at: number }> }
-    | { type: 'done'; reply: string; status: string; error: string | null }
-    | { type: 'error'; code: string; message: string }
-    | { type: 'info'; message: string }
-    | { type: 'mode_changed'; mode: string }
-    | { type: 'session_end'; clean: boolean; reason: string }
-    | { type: 'runtime_event'; event: Record<string, unknown> }
-    | {
-        type: 'run_state';
-        status: string;
-        error: string | null;
-        model_calls: number;
-        tool_calls: number;
-        elapsed: number;
-        usage: { input_tokens: number; output_tokens: number };
-        limits: Record<string, unknown>;
-      }
-    | { type: 'artifact'; artifact_id?: string; name?: string; path?: string; characters?: number; preview?: string }
-    | {
-        type: 'question';
-        questions: Array<{ question: string; options?: Array<{ label: string; description?: string }> }>;
-      }
-    | { type: 'ui_setting'; name: string; value: string }
-    | { type: 'request_completed'; request_id: string }
-  );
+export type EngineEvent =
+  | OpenEvent
+  | (Base &
+      (
+        | { type: 'ready'; model: string; cwd: string; mode: string; migration: string[] }
+        | { type: 'session_info'; cwd: string; model: string; mode: string; checkpoint: string | null }
+        | { type: 'session_history'; messages: Array<{ role: 'user' | 'assistant'; content: string }> }
+        | { type: 'assistant_token'; content: string }
+        | { type: 'tool_call'; name: string; args: Record<string, unknown> }
+        | { type: 'tool_result'; name: string; result: string; success: boolean }
+        | Approval
+        | { type: 'command_result'; name: string; result: string }
+        | { type: 'model_list'; current: string; models: Array<{ name: string }> }
+        | { type: 'session_list'; sessions: Array<{ id: string; title: string; model: string; created_at: number }> }
+        | { type: 'done'; reply: string; status: string; error: string | null }
+        | { type: 'error'; code: string; message: string }
+        | { type: 'info'; message: string }
+        | { type: 'mode_changed'; mode: string }
+        | { type: 'session_end'; clean: boolean; reason: string }
+        | { type: 'runtime_event'; event: Record<string, unknown> }
+        | {
+            type: 'run_state';
+            status: string;
+            error: string | null;
+            model_calls: number;
+            tool_calls: number;
+            elapsed: number;
+            usage: { input_tokens: number; output_tokens: number };
+            limits: Record<string, unknown>;
+          }
+        | {
+            type: 'artifact';
+            artifact_id?: string;
+            name?: string;
+            path?: string;
+            characters?: number;
+            preview?: string;
+          }
+        | {
+            type: 'question';
+            questions: Array<{ question: string; options?: Array<{ label: string; description?: string }> }>;
+          }
+        | { type: 'ui_setting'; name: string; value: string }
+        | { type: 'request_completed'; request_id: string }
+      ));
 
 function object(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -56,6 +65,7 @@ export function parseEvent(line: string): EngineEvent {
     throw new Error('Invalid protocol envelope/version');
   for (const key of ['session_id', 'run_id', 'call_id'])
     if (value[key] !== null && typeof value[key] !== 'string') throw new Error(`Invalid ${key}`);
+  if (typeof value.type === 'string' && value.type.startsWith('open_')) return parseOpenEvent(value);
   const required: Record<string, string[]> = {
     ready: ['model', 'cwd', 'mode'],
     session_info: ['cwd', 'model', 'mode'],
@@ -154,3 +164,4 @@ export function parseEvent(line: string): EngineEvent {
     throw new Error('Invalid question');
   return value as EngineEvent;
 }
+import { parseOpenEvent, type OpenEvent } from './open/protocol.js';

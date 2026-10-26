@@ -1,0 +1,5 @@
+[
+  {
+    "text": "{\"implementation\": {\"kind\": \"python\", \"body\": \"def solve(inputs):\\n    return {'base_digest': inputs['repository_digest'], 'changes': [{'path': 'calc.py', 'before_digest': inputs['file_digests']['calc.py'], 'content': 'def add(a, b):\\\\n    return a + b\\\\n'}]}\"}}"
+  }
+]
